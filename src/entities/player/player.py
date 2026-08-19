@@ -1,0 +1,865 @@
+"""Player ship with 7-state FSM (BLOQUE 6).
+
+States: IDLE, MOVE, SHOOT, CHARGE (build+fire), DASH, HIT, DEAD.
+
+Transitions (per GDD §2):
+  - IDLE -> MOVE    (input lateral)
+  - MOVE -> IDLE    (input released + 0.05s settle)
+  - IDLE/MOVE -> SHOOT  (fire input + cd_ready, 0.10s timer)
+  - SHOOT/IDLE -> CHARGE  (hold > 0.5s, builds L1/L2/L3 at 0.5/1.0/1.5s)
+  - CHARGE -> IDLE  (release + fire 0.20s anim, or 1.5s timeout -> SHOOT)
+  - any -> DASH     (dash input, 0.18s, i-frames)
+  - any -> HIT      (take_damage, 0.30s, 60f invuln)
+  - HIT -> DEAD     (lives=0)
+  - DEAD -> respawn (1.20s) -> IDLE (1s invuln) or game_over
+"""
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Optional
+
+import pygame
+
+from src.core.settings import (
+    INTERNAL_H,
+    INTERNAL_W,
+    PLAYER_BOMBS,
+    PLAYER_BOMBS_MAX,
+    PLAYER_CLICK_VS_HOLD_THRESHOLD_S,
+    PLAYER_DASH_DURATION_S,
+    PLAYER_DASH_HEAT_COST,
+    PLAYER_DASH_HEAT_DECAY_PER_S,
+    PLAYER_DASH_HEAT_MAX,
+    PLAYER_DASH_HEAT_PER_S,
+    PLAYER_DASH_HEAT_RESUME_THRESHOLD,
+    PLAYER_DASH_IFRAMES,
+    PLAYER_DASH_SPEED,
+    PLAYER_DEATH_DURATION_S,
+    PLAYER_FIRE_COOLDOWN_S,
+    PLAYER_INVULN_FRAMES,
+    PLAYER_HP,
+    PLAYER_HP_MAX,
+    PLAYER_HP_ABSOLUTE_MAX,
+    PLAYER_LIVES,
+    PLAYER_NOSE_LERP_PER_S,
+    PLAYER_PROPULSION_HEAT_PER_S,
+    PLAYER_PROPULSION_SPEED_MULT,
+    PLAYER_RESPAWN_INVULN_S,
+    PLAYER_SPEED,
+)
+
+
+class PlayerState(Enum):
+    IDLE = "idle"
+    MOVE = "move"
+    SHOOT = "shoot"
+    CHARGE = "charge"
+    DASH = "dash"
+    PROPULSION = "propulsion"  # BLOQUE 58.8.1: shift held = continuous thruster
+    HIT = "hit"
+    DEAD = "dead"
+
+
+# Charge thresholds (seconds)
+CHARGE_L1_S = 0.5
+CHARGE_L2_S = 1.0
+CHARGE_L3_S = 1.5
+CHARGE_TIMEOUT_S = 1.5
+CHARGE_FIRE_ANIM_S = 0.20
+
+# Settle time when releasing lateral input
+MOVE_SETTLE_S = 0.05
+
+# Hit duration
+HIT_DURATION_S = 0.30
+HITSTOP_FRAMES_ON_HIT = 3
+
+
+@dataclass
+class Player:
+    """Player ship entity. State, position, velocity, lives, bombs."""
+    # Position
+    x: float = INTERNAL_W / 2
+    y: float = INTERNAL_H - 60
+    vx: float = 0.0
+    vy: float = 0.0
+    # Tilt
+    tilt: float = 0.0  # degrees, target; current is computed
+    current_tilt: float = 0.0
+    # BLOQUE 32: nose angle (rotation of the ship's "trompa")
+    # 360° rotation, world-relative movement (WASD is screen-space).
+    # Driven by mouse position; only updates target while moving (BLOQUE 32
+    # "rotate-while-moving" design — keeps the ship stable when stopped
+    # so the player can stand their ground without the nose drifting).
+    nose_angle: float = 0.0  # target angle in degrees, 0..360 (0 = up, 90 = right)
+    current_nose_angle: float = 0.0  # smoothed angle for rendering
+    # State
+    state: PlayerState = PlayerState.IDLE
+    state_timer: float = 0.0
+    # Charge
+    charge_time: float = 0.0
+    # Dash
+    dash_dir_x: float = 0.0
+    dash_dir_y: float = -1.0  # default upward
+    dash_iframes_left: int = 0
+    # BLOQUE 58.8: dash overheat (Star Fox style). Heat builds while
+    # dashing (PLAYER_DASH_HEAT_PER_S), decays when not dashing
+    # (PLAYER_DASH_HEAT_DECAY_PER_S). When heat >= MAX, dash auto-cancels
+    # and can't be triggered again until heat drops below RESUME_THRESHOLD.
+    dash_heat: float = 0.0
+    # BLOQUE 58.8: dash_held — True while shift is held down. Allows
+    # prolonged dash: hold shift = continuous dash (heat-permitting).
+    dash_held: bool = False
+    # BLOQUE 58.8.1/58.8.2/58.8.3: time shift has been held down. Used to
+    # distinguish a quick click (DASH, < 0.28s) from a sustained hold
+    # (PROPULSION).
+    # BLOQUE 58.8.2: threshold widened from 0.15s -> 0.6s so a normal tap
+    # reliably triggers DASH instead of being misread as a hold.
+    # BLOQUE 58.8.3: tightened from 0.6s -> 0.28s — 0.6s introduced too
+    # much delay before propulsion started; 0.28s is the sweet spot.
+    dash_held_time: float = 0.0
+    # BLOQUE 58.8.1: trail spawn timer (PROPULSION light trail).
+    propulsion_trail_timer: float = 0.0
+    # BLOQUE 58.11: removed propulsion_wake_timer (was for the
+    # BLOQUE 58.8.3-58.8.4 delayed wake). The Tron trail replaces it
+    # and is managed by the engine (self._tron_trail), not the Player.
+    # Hit
+    invuln_frames: int = 0
+    # Lifecycle
+    lives: int = PLAYER_LIVES
+    bombs: int = PLAYER_BOMBS
+    bombs_max: int = PLAYER_BOMBS_MAX
+    # BLOQUE 53b: HP bar (Mega Man / Star Fox). Starts at 30 — a
+    # bigger pool so healing sources (gold rings, tech upgrades) feel
+    # meaningful. Grows via gold rings (one-time 2x) and tech upgrades.
+    hp: int = PLAYER_HP
+    hp_max: int = PLAYER_HP_MAX
+    # BLOQUE 53c: gold ring stacking (0..3). 3 rings = one-time HP double.
+    gold_rings: int = 0
+    hp_doubled: bool = False
+    # BLOQUE 53d: tech upgrade IDs collected this run
+    tech_upgrades: list[str] = field(default_factory=list)
+    # Fire cooldown
+    fire_cd: float = 0.0
+    # Death/respawn
+    death_timer: float = 0.0
+    respawn_invuln: float = 0.0
+    # After-image trail
+    afterimage: list[tuple[float, float, float]] = field(default_factory=list)  # (x, y, age)
+    AFTERIMAGE_LIFE = 0.13  # seconds
+    # Inputs (set externally each frame)
+    input_left: bool = False
+    input_right: bool = False
+    input_up: bool = False
+    input_down: bool = False
+    input_fire: bool = False
+    input_dash: bool = False
+    input_bomb: bool = False
+    # BLOQUE 34: rapid fire (RMB) — fires L1 every cooldown WITHOUT charging
+    input_rapid_fire: bool = False
+    # Output signals (consumed by WeaponSystem etc.)
+    wants_to_shoot: bool = False
+    wants_to_charge_release: bool = False
+    wants_to_dash: bool = False
+    wants_to_bomb: bool = False
+    # Damage received this frame (set by collision system)
+    damage_taken: int = 0
+    # HP system
+    is_dead: bool = False
+    is_game_over: bool = False
+    # Internal: charge-firing flag (set when release happens mid-charge)
+    _charge_fired: bool = False
+
+    # -----------------------------------------------------------------------
+    # Public API
+    # -----------------------------------------------------------------------
+    def reset(self) -> None:
+        """Full reset to spawn state. Used on game start / continue."""
+        self.x = INTERNAL_W / 2
+        self.y = INTERNAL_H - 60
+        self.vx = 0.0
+        self.vy = 0.0
+        self.tilt = 0.0
+        self.current_tilt = 0.0
+        self.state = PlayerState.IDLE
+        self.state_timer = 0.0
+        self.charge_time = 0.0
+        self.dash_iframes_left = 0
+        self.invuln_frames = 0
+        # BLOQUE 28: easy mode gives more lives + bombs
+        import os as _os
+        if _os.environ.get("VOID_HUNTER_EASY", "0") == "1":
+            self.lives = 9
+            self.bombs = 4
+            self.bombs_max = 5
+        else:
+            self.lives = PLAYER_LIVES
+            self.bombs = PLAYER_BOMBS
+            self.bombs_max = PLAYER_BOMBS_MAX
+        self.hp = PLAYER_HP
+        self.hp_max = PLAYER_HP_MAX
+        # BLOQUE 53c: reset gold ring + tech upgrade state
+        self.gold_rings = 0
+        self.hp_doubled = False
+        self.tech_upgrades = []
+        self.fire_cd = 0.0
+        self.death_timer = 0.0
+        self.respawn_invuln = 0.0
+        self.afterimage.clear()
+        self.wants_to_shoot = False
+        self.wants_to_charge_release = False
+        self.wants_to_dash = False
+        self.wants_to_bomb = False
+        self.damage_taken = 0
+        self.is_dead = False
+        self.is_game_over = False
+        # BLOQUE 32: nose angle starts pointing up (0°)
+        self.nose_angle = 0.0
+        self.current_nose_angle = 0.0
+
+    def take_damage(self, amount: int = 1) -> bool:
+        """Apply damage if not in i-frames. Returns True if hit applied."""
+        if self.invuln_frames > 0 or self.dash_iframes_left > 0:
+            return False
+        if self.state == PlayerState.DEAD:
+            return False
+        self.hp -= amount
+        self.damage_taken = max(self.damage_taken, amount)
+        return True
+
+    def heal(self, amount: int) -> int:
+        """BLOQUE 53b/c: add HP, capped at hp_max. Returns actual amount healed."""
+        if amount <= 0:
+            return 0
+        before = self.hp
+        self.hp = min(self.hp_max, self.hp + amount)
+        return self.hp - before
+
+    def add_gold_ring(self) -> int:
+        """BLOQUE 53c: collect a gold ring. Returns 1 if doubled, 0 otherwise.
+
+        Each ring heals GOLD_RING_HEAL HP. When 3 are stacked, the
+        player's max HP is doubled (one-time per run).
+        """
+        from src.core.settings import GOLD_RING_HEAL, PLAYER_HP_ABSOLUTE_MAX
+        self.heal(GOLD_RING_HEAL)
+        if self.hp_doubled:
+            return 0
+        self.gold_rings += 1
+        if self.gold_rings >= 3:
+            # One-time double max HP
+            self.hp_max = min(PLAYER_HP_ABSOLUTE_MAX, self.hp_max * 2)
+            self.hp = self.hp_max
+            self.hp_doubled = True
+            self.gold_rings = 0  # reset counter
+            return 1
+        return 0
+
+    def add_tech_upgrade(self, upgrade_id: str) -> None:
+        """BLOQUE 53d: collect a tech upgrade by ID. Applies its effect.
+
+        Currently recognized IDs:
+          - HP_BOOST_10: +10% max HP (rounded up). One-time per run.
+        """
+        from src.core.settings import TECH_HP_BOOST_PCT, PLAYER_HP_ABSOLUTE_MAX
+        if upgrade_id in self.tech_upgrades:
+            return
+        self.tech_upgrades.append(upgrade_id)
+        if upgrade_id == "HP_BOOST_10":
+            # +10% max HP (rounded up, capped)
+            boost = max(1, int(self.hp_max * TECH_HP_BOOST_PCT))
+            self.hp_max = min(PLAYER_HP_ABSOLUTE_MAX, self.hp_max + boost)
+            self.hp = self.hp_max  # refill on upgrade
+
+    @property
+    def is_invulnerable(self) -> bool:
+        return self.invuln_frames > 0 or self.dash_iframes_left > 0
+
+    @property
+    def hitbox(self) -> pygame.Rect:
+        """Real hitbox = 70% of sprite (forgiving per GDD §5)."""
+        return pygame.Rect(int(self.x - 9), int(self.y - 6), 18, 12)
+
+    # -----------------------------------------------------------------------
+    # Per-frame update
+    # -----------------------------------------------------------------------
+    def update(self, dt: float) -> None:
+        """Advance FSM + position. Outputs `wants_to_*` flags for systems."""
+        if dt <= 0.0:
+            return
+        # Always clamp (defensive: covers spawn at any position, debug overrides)
+        self._clamp_position()
+        # Reset per-frame outputs
+        self.wants_to_shoot = False
+        self.wants_to_charge_release = False
+        self.wants_to_dash = False
+        self.wants_to_bomb = False
+        # Invuln countdown (always)
+        if self.invuln_frames > 0:
+            self.invuln_frames = max(0, self.invuln_frames - 1)
+        if self.dash_iframes_left > 0:
+            self.dash_iframes_left = max(0, self.dash_iframes_left - 1)
+        # BLOQUE 58.8.1: dash_heat + propulsion_heat (shared bar).
+        # - DASH: consumes a flat 10 heat on entry (no continuous build)
+        # - PROPULSION: builds heat continuously at PROPULSION_HEAT_PER_S
+        # - Both modes: auto-cancel on heat >= MAX
+        # - All other states: heat cools down at DECAY_PER_S
+        if self.state == PlayerState.PROPULSION:
+            self.dash_heat = min(PLAYER_DASH_HEAT_MAX,
+                                 self.dash_heat + PLAYER_PROPULSION_HEAT_PER_S * dt)
+            if self.dash_heat >= PLAYER_DASH_HEAT_MAX:
+                # Overheat: auto-cancel the propulsion (must release
+                # shift and re-press to use again, per user requirement)
+                self.dash_held = False
+                self._enter_idle()
+        else:
+            # Cool down when not in PROPULSION (including IDLE, DASH, etc.)
+            if self.dash_heat > 0.0:
+                self.dash_heat = max(0.0,
+                                     self.dash_heat - PLAYER_DASH_HEAT_DECAY_PER_S * dt)
+        # BLOQUE 58.8.1: track how long shift has been held (used to
+        # distinguish click from hold — click = DASH, hold = PROPULSION)
+        if self.dash_held:
+            self.dash_held_time += dt
+        else:
+            self.dash_held_time = 0.0
+        # Fire cooldown
+        if self.fire_cd > 0.0:
+            self.fire_cd = max(0.0, self.fire_cd - dt)
+        # Track charge_time when input_fire is held.
+        # BLOQUE 34 fix: charge_time grows in IDLE/MOVE/SHOOT/CHARGE whenever
+        # input_fire is held (was IDLE/MOVE only — this bug prevented L3 beam
+        # from ever triggering because IDLE is only 1 frame out of 13 in the
+        # SHOOT cycle, so charge_time never reached 0.5s).
+        # Rapid fire (RMB) still bypasses — never enters CHARGE.
+        if self.input_fire and not self.input_rapid_fire:
+            self.charge_time += dt
+        elif self.state in (PlayerState.IDLE, PlayerState.MOVE):
+            # Released while in IDLE/MOVE → reset
+            self.charge_time = 0.0
+        # Afterimage decay
+        if self.afterimage:
+            new_trail: list[tuple[float, float, float]] = []
+            for tx, ty, age in self.afterimage:
+                new_age = age + dt
+                if new_age < self.AFTERIMAGE_LIFE:
+                    new_trail.append((tx, ty, new_age))
+            self.afterimage = new_trail
+        # BLOQUE 34: nose angle lerp — always tracks mouse, fast and smooth.
+        # Fixes "weird 360° rotation" bug: now the visual matches the target
+        # in ~15ms for small turns, so the ship ALWAYS faces where the bullets
+        # are going. No more frozen-when-stopped disconnect.
+        # BLOQUE 35: defensive clamp — keep nose_angle and current_nose_angle
+        # in [0, 360) so out-of-range values (e.g. 720 or -100) don't propagate
+        # through the lerp math and corrupt the visual.
+        self.nose_angle = self.nose_angle % 360.0
+        self.current_nose_angle = self.current_nose_angle % 360.0
+        target = self.nose_angle
+        cur = self.current_nose_angle
+        diff = (target - cur + 540.0) % 360.0 - 180.0  # signed shortest
+        step = PLAYER_NOSE_LERP_PER_S * dt
+        if abs(diff) <= step:
+            self.current_nose_angle = target
+        else:
+            self.current_nose_angle = (cur + (step if diff > 0 else -step)) % 360.0
+        # State-specific update
+        if self.state == PlayerState.IDLE:
+            self._update_idle(dt)
+        elif self.state == PlayerState.MOVE:
+            self._update_move(dt)
+        elif self.state == PlayerState.SHOOT:
+            self._update_shoot(dt)
+        elif self.state == PlayerState.CHARGE:
+            self._update_charge(dt)
+        elif self.state == PlayerState.DASH:
+            self._update_dash(dt)
+        elif self.state == PlayerState.PROPULSION:
+            self._update_propulsion(dt)
+        elif self.state == PlayerState.HIT:
+            self._update_hit(dt)
+        elif self.state == PlayerState.DEAD:
+            self._update_dead(dt)
+        # Tilt smoothing
+        self.current_tilt += (self.tilt - self.current_tilt) * min(1.0, dt * 12.0)
+        # BLOQUE 35: REMOVED the legacy BLOQUE 29 nose-angle smoothing that
+        # was running AFTER our short-path lerp and OVERWRITING it with a
+        # long-path linear interpolation. This was the actual cause of
+        # the "ship rotates 360 on its axis" bug — two competing lerps
+        # where the bad long-path one ran second and won.
+        # Apply damage if accumulated
+        if self.damage_taken > 0 and self.state != PlayerState.DEAD:
+            self._enter_hit()
+            self.damage_taken = 0
+        # State timer advance
+        self.state_timer += dt
+
+    # -----------------------------------------------------------------------
+    # State updates
+    # -----------------------------------------------------------------------
+    def _update_idle(self, dt: float) -> None:
+        # BLOQUE 58.8.1: DASH (click) takes priority over PROPULSION (hold).
+        # Click = input_dash flag set on KEYUP if shift was held < threshold.
+        # Hold = dash_held=True and dash_held_time >= threshold -> PROPULSION.
+        if self.input_dash and self._can_dash():
+            self._enter_dash()
+            return
+        # Shift held past the click threshold -> enter PROPULSION
+        if (self.dash_held
+                and self.dash_held_time >= PLAYER_CLICK_VS_HOLD_THRESHOLD_S
+                and self._can_dash()):
+            self._enter_propulsion()
+            return
+        # BLOQUE 38: RMB rapid fire (independent of LMB charge)
+        if self.input_rapid_fire and self.fire_cd <= 0.0:
+            self.wants_to_shoot = True
+            self.fire_cd = PLAYER_FIRE_COOLDOWN_S
+            self._enter_shoot()
+            return
+        # Bomb
+        if self.input_bomb and self.bombs > 0:
+            self._consume_bomb()
+            return
+        # Charge takes priority over shoot (held > 0.5s = charge)
+        if self.input_fire and self.charge_time >= CHARGE_L1_S:
+            self._enter_charge()
+            return
+        # BLOQUE 29: any directional input (W/A/S/D or arrows) → MOVE
+        if self.input_left or self.input_right or self.input_up or self.input_down:
+            self._enter_move()
+            return
+        # Fire input
+        if self.input_fire:
+            if self.fire_cd <= 0.0:
+                self.wants_to_shoot = True
+                self.fire_cd = PLAYER_FIRE_COOLDOWN_S
+                self._enter_shoot()
+            return
+        # No input → stay
+        self.vx = 0.0
+        self.vy = 0.0
+        self.tilt = 0.0
+        # Always clamp (defensive)
+        self._clamp_position()
+
+    def _update_move(self, dt: float) -> None:
+        # BLOQUE 58.8.1: DASH (click) or PROPULSION (hold) takes priority
+        if self.input_dash and self._can_dash():
+            self._enter_dash()
+            return
+        if (self.dash_held
+                and self.dash_held_time >= PLAYER_CLICK_VS_HOLD_THRESHOLD_S
+                and self._can_dash()):
+            self._enter_propulsion()
+            return
+        # Bomb
+        if self.input_bomb and self.bombs > 0:
+            self._consume_bomb()
+            return
+        # BLOQUE 38: RMB rapid fire (can be combined with WASD movement)
+        if self.input_rapid_fire and self.fire_cd <= 0.0:
+            self.wants_to_shoot = True
+            self.fire_cd = PLAYER_FIRE_COOLDOWN_S
+            self._enter_shoot()
+            return
+        # Charge before shoot
+        if self.input_fire and self.charge_time >= CHARGE_L1_S:
+            self._enter_charge()
+            return
+        # BLOQUE 32: world-relative movement.
+        # WASD maps to screen-space axes regardless of ship facing.
+        #   W = up screen, S = down, A = left, D = right.
+        # Ship's facing is set by mouse (for aiming only).
+        target_vx = 0.0
+        target_vy = 0.0
+        speed = PLAYER_SPEED
+        # Compute desired velocity from WASD (screen-space)
+        if self.input_left:
+            target_vx -= speed
+        if self.input_right:
+            target_vx += speed
+        if self.input_up:
+            target_vy -= speed
+        if self.input_down:
+            target_vy += speed
+        # BLOQUE 32: snappier acceleration for responsive feel
+        accel = min(1.0, dt * 18.0)
+        self.vx += (target_vx - self.vx) * accel
+        self.vy += (target_vy - self.vy) * accel
+        # BLOQUE 47: snappier, more pronounced banking (Star Fox 64 feel)
+        # Range ±25° (was ±15°), with a subtle Y-axis roll during vertical
+        # movement so the ship feels alive in 4 directions.
+        if self.vx < -10:
+            self.tilt = -25.0
+        elif self.vx > 10:
+            self.tilt = 25.0
+        else:
+            self.tilt = 0.0
+        # Subtle roll for vertical movement (gives the ship a 3D feel)
+        if self.vy < -10:
+            self.tilt += -3.0
+        elif self.vy > 10:
+            self.tilt += 3.0
+        # Position integration
+        self.x += self.vx * dt
+        self.y += self.vy * dt
+        self._clamp_position()
+        # Settle: if no direction input → back to IDLE
+        if not (self.input_left or self.input_right or self.input_up or self.input_down):
+            if self.state_timer >= MOVE_SETTLE_S:
+                self._enter_idle()
+                return
+        # Fire (L1) — same as before
+        if self.input_fire and self.fire_cd <= 0.0:
+            self.wants_to_shoot = True
+            self.fire_cd = PLAYER_FIRE_COOLDOWN_S
+            self._enter_shoot()
+
+    def _update_shoot(self, dt: float) -> None:
+        """BLOQUE 58.7: brief recoil anim + FULL 8-direction movement.
+
+        Previous behavior only checked LEFT/RIGHT and ignored UP/DOWN, so
+        the player felt "stuck" while firing. Now we check all 4 directions
+        and transition to MOVE if any of them is held. The CHARGE state
+        (laser) keeps its own movement restrictions per the user request:
+        "deja las limitaciones de movimiento que ya tiene cuando use el laser".
+        """
+        # Maintain 8-direction movement capability while in SHOOT
+        if (self.input_left or self.input_right
+                or self.input_up or self.input_down):
+            self._enter_move()
+            return
+        # BLOQUE 38: keep firing while RMB held (continuous L1 stream)
+        if self.input_rapid_fire and self.fire_cd <= 0.0:
+            self.wants_to_shoot = True
+            self.fire_cd = PLAYER_FIRE_COOLDOWN_S
+            self.state_timer = 0.0  # reset recoil so we don't exit yet
+            return
+        # 0.10s after fire, return to idle
+        if self.state_timer >= PLAYER_FIRE_COOLDOWN_S:
+            self._enter_idle()
+            return
+        # Can dash out of shoot
+        if self.input_dash and self._can_dash():
+            self._enter_dash()
+            return
+        if (self.dash_held
+                and self.dash_held_time >= PLAYER_CLICK_VS_HOLD_THRESHOLD_S
+                and self._can_dash()):
+            self._enter_propulsion()
+            return
+
+    def _update_charge(self, dt: float) -> None:
+        # CHARGE engloba build (charge_time) + fire anim (post-release)
+        if not self.input_fire and self.charge_time >= CHARGE_L1_S and not self._charge_fired:
+            # Release: fire special shot
+            self.wants_to_charge_release = True
+            self._charge_fired = True
+        if self._charge_fired:
+            # Post-fire animation
+            if self.state_timer >= CHARGE_FIRE_ANIM_S:
+                self._enter_idle()
+                return
+        else:
+            # Building up
+            self.charge_time += dt
+            if self.charge_time >= CHARGE_TIMEOUT_S and not self.input_fire:
+                # Timeout without release → fall back to auto-fire L1
+                self.wants_to_shoot = True
+                self._enter_idle()
+                return
+        # Movement allowed during charge (with penalty)
+        target_vx = 0.0
+        if self.input_left:
+            target_vx -= PLAYER_SPEED * 0.6
+        if self.input_right:
+            target_vx += PLAYER_SPEED * 0.6
+        self.vx += (target_vx - self.vx) * min(1.0, dt * 8.0)
+        self.x += self.vx * dt
+        self._clamp_position()
+        # Can dash
+        if self.input_dash and self._can_dash():
+            self._enter_dash()
+            return
+        if (self.dash_held
+                and self.dash_held_time >= PLAYER_CLICK_VS_HOLD_THRESHOLD_S
+                and self._can_dash()):
+            self._enter_propulsion()
+            return
+
+    def _update_propulsion(self, dt: float) -> None:
+        """BLOQUE 58.8.1 + 58.43: PROPULSION state — continuous thruster while
+        shift is held. 2x speed, blue particle trail from the back, heat
+        builds at PROPULSION_HEAT_PER_S. Auto-cancels on overheat or shift
+        release. Must release shift and re-press to use again.
+
+        BLOQUE 58.43: can fire (LMB rapid and RMB rapid) WITHOUT exiting
+        the PROPULSION state. Previously each shot briefly exited to
+        SHOOT then back to IDLE, breaking the propulsion flow. Now the
+        player keeps the 2x speed + blue trail while shooting.
+        """
+        # Heat is updated in the main update() loop
+        # Overheat already handled in main update() (sets dash_held=False
+        # and enters IDLE), so if we're here, heat is below MAX.
+        # Cancel on shift release (already handled if heat max).
+        if not self.dash_held:
+            self._enter_idle()
+            return
+        # Movement: 2x speed, 8 directions (WASD or arrows)
+        prop_speed = PLAYER_SPEED * PLAYER_PROPULSION_SPEED_MULT
+        target_vx = 0.0
+        target_vy = 0.0
+        if self.input_left and not self.input_right:
+            target_vx -= prop_speed
+        if self.input_right and not self.input_left:
+            target_vx += prop_speed
+        if self.input_up and not self.input_down:
+            target_vy -= prop_speed
+        if self.input_down and not self.input_up:
+            target_vy += prop_speed
+        # Smooth velocity (snappier than MOVE for propulsion feel)
+        lerp = min(1.0, dt * 12.0)
+        self.vx += (target_vx - self.vx) * lerp
+        self.vy += (target_vy - self.vy) * lerp
+        self.x += self.vx * dt
+        self.y += self.vy * dt
+        self._clamp_position()
+        # Banking tilt (subtle, same as MOVE)
+        if self.vx < -10:
+            self.tilt = -25.0
+        elif self.vx > 10:
+            self.tilt = 25.0
+        else:
+            self.tilt = 0.0
+        if self.vy < -10:
+            self.tilt += -3.0
+        elif self.vy > 10:
+            self.tilt += 3.0
+        # Trail timer — the actual particles are emitted by the
+        # gameplay_runtime (which has access to the particle engine).
+        # We just expose the timer so the runtime knows when to spawn.
+        self.propulsion_trail_timer += dt
+        # BLOQUE 58.43: can fire during propulsion WITHOUT exiting the
+        # state. Just set wants_to_shoot and let the runtime fire the
+        # bullet. State stays PROPULSION (keeps 2x speed + blue trail).
+        if self.input_fire and self.fire_cd <= 0.0:
+            self.wants_to_shoot = True
+            self.fire_cd = PLAYER_FIRE_COOLDOWN_S
+        # BLOQUE 58.43: RMB rapid fire also works in propulsion.
+        if self.input_rapid_fire and self.fire_cd <= 0.0:
+            self.wants_to_shoot = True
+            self.fire_cd = PLAYER_FIRE_COOLDOWN_S
+        # Can drop bomb during propulsion
+        if self.input_bomb and self.bombs > 0:
+            self.wants_to_bomb = True
+            self._consume_bomb()
+        # If user is charging (fire held > 0.5s), exit to CHARGE
+        # (CHARGE keeps its own movement restrictions per the user
+        # request: 'deja las limitaciones de movimiento que ya tiene
+        # cuando use el laser')
+        if self.input_fire and self.charge_time >= CHARGE_L1_S:
+            self._enter_charge()
+            return
+
+    def _update_dash(self, dt: float) -> None:
+        # Move in dash direction at high speed
+        self.x += self.dash_dir_x * PLAYER_DASH_SPEED * dt
+        self.y += self.dash_dir_y * PLAYER_DASH_SPEED * dt
+        self._clamp_position()
+        # After-image trail
+        self.afterimage.append((self.x, self.y, 0.0))
+        if len(self.afterimage) > 8:
+            self.afterimage.pop(0)
+        # BLOQUE 58.8: dash ends when:
+        #   1. The fixed duration expires (existing behavior), OR
+        #   2. The player released shift (dash_held=False) and the
+        #      minimum dash duration has elapsed, OR
+        #   3. Heat hit MAX (overheat) — handled in the main update().
+        # Minimum dash duration prevents tap-to-dash from ending instantly.
+        min_dash_s = 0.08
+        duration_done = self.state_timer >= PLAYER_DASH_DURATION_S
+        released_too_soon = (not self.dash_held
+                            and self.state_timer >= min_dash_s)
+        if duration_done or released_too_soon:
+            self._enter_idle()
+
+    def _update_hit(self, dt: float) -> None:
+        # Reduced movement
+        self.vx *= 0.85
+        self.x += self.vx * dt
+        self._clamp_position()
+        if self.state_timer >= HIT_DURATION_S:
+            if self.hp <= 0:
+                self.lives -= 1
+                if self.lives < 0:
+                    self.is_game_over = True
+                self._enter_dead()
+            else:
+                self.invuln_frames = PLAYER_INVULN_FRAMES
+                self._enter_idle()
+
+    def _update_dead(self, dt: float) -> None:
+        self.death_timer += dt
+        if self.death_timer >= PLAYER_DEATH_DURATION_S:
+            if self.is_game_over:
+                return
+            # Respawn
+            self.x = INTERNAL_W / 2
+            self.y = INTERNAL_H - 60
+            self.vx = 0.0
+            self.vy = 0.0
+            self.hp = self.hp_max
+            self.death_timer = 0.0
+            self.respawn_invuln = PLAYER_RESPAWN_INVULN_S
+            self._enter_idle()
+
+    # -----------------------------------------------------------------------
+    # State transitions
+    # -----------------------------------------------------------------------
+    def _enter_idle(self) -> None:
+        """Enter IDLE state. NOTE: charge_time is intentionally NOT reset
+        here — that would clobber a charge the player has been building.
+        The actual charge release happens when input_fire transitions from
+        True → False (handled in the main update via the elif branch)."""
+        self.state = PlayerState.IDLE
+        self.state_timer = 0.0
+        self._charge_fired = False
+
+    def _enter_move(self) -> None:
+        self.state = PlayerState.MOVE
+        self.state_timer = 0.0
+
+    def _enter_shoot(self) -> None:
+        self.state = PlayerState.SHOOT
+        self.state_timer = 0.0
+
+    def _enter_charge(self) -> None:
+        self.state = PlayerState.CHARGE
+        self.state_timer = 0.0
+        self.charge_time = CHARGE_L1_S  # already exceeded L1 by check
+        self._charge_fired = False
+
+    def _can_dash(self) -> bool:
+        """BLOQUE 58.8: dash is available if heat is below the resume
+        threshold (so the player has to wait for cooldown before
+        dashing again after an overheat)."""
+        return self.dash_heat < PLAYER_DASH_HEAT_RESUME_THRESHOLD
+
+    def _enter_dash(self) -> None:
+        """Enter DASH state with 8-way direction based on input.
+
+        BLOQUE 58.8: gated by _can_dash() (heat below resume threshold).
+        BLOQUE 58.8.1: DASH now consumes a flat 10 heat (PLAYER_DASH_HEAT_COST)
+        instead of building heat continuously. Heat still caps at MAX.
+        Direction priority:
+          1. Active directional input (WASD or arrows when K is pressed)
+          2. Last horizontal velocity (continues motion)
+          3. UP (stationary, GDD default)
+
+        Combinations give 8 directions:
+          K alone          -> UP
+          K + A/D          -> LEFT/RIGHT
+          K + W            -> UP (same as K alone)
+          K + S            -> DOWN (escape move)
+          K + A + W        -> UP-LEFT
+          K + A + S        -> DOWN-LEFT
+          K + D + W        -> UP-RIGHT
+          K + D + S        -> DOWN-RIGHT
+        """
+        # BLOQUE 58.8: overheat gate — can't start a new dash if heat
+        # is still too high (must cool down below RESUME_THRESHOLD).
+        if not self._can_dash():
+            self.input_dash = False
+            return
+        # BLOQUE 58.8.1: consume flat DASH heat cost (one-shot)
+        self.dash_heat = min(PLAYER_DASH_HEAT_MAX,
+                             self.dash_heat + PLAYER_DASH_HEAT_COST)
+        self.state = PlayerState.DASH
+        self.state_timer = 0.0
+        self.dash_iframes_left = PLAYER_DASH_IFRAMES
+        left = self.input_left
+        right = self.input_right
+        up = self.input_up
+        down = self.input_down
+        dx, dy = 0.0, 0.0
+        if left and not right:
+            dx = -1.0
+        elif right and not left:
+            dx = 1.0
+        if up and not down:
+            dy = -1.0
+        elif down and not up:
+            dy = 1.0
+        # If no active directional input, fall back to vx
+        if dx == 0.0 and dy == 0.0:
+            if self.vx < -10.0:
+                dx = -1.0
+            elif self.vx > 10.0:
+                dx = 1.0
+            else:
+                dx = 0.0
+                dy = -1.0  # default UP per GDD
+        # Normalize diagonal so dash distance is consistent
+        if dx != 0.0 and dy != 0.0:
+            inv = 1.0 / math.sqrt(2.0)
+            dx *= inv
+            dy *= inv
+        self.dash_dir_x = dx
+        self.dash_dir_y = dy
+        # Consume dash input (one-shot)
+        self.input_dash = False
+
+    def _enter_propulsion(self) -> None:
+        """BLOQUE 58.8.1: enter PROPULSION state (continuous thruster).
+
+        Triggered when shift is held for >= PLAYER_CLICK_VS_HOLD_THRESHOLD_S.
+        Gives x2 speed, emits a light trail from the back, and builds
+        heat at PLAYER_PROPULSION_HEAT_PER_S. Auto-cancels on overheat
+        or shift release. Must release shift and re-press to use again
+        (per user requirement).
+        """
+        self.state = PlayerState.PROPULSION
+        self.state_timer = 0.0
+        # Reset trail timer so the first particle is emitted quickly
+        self.propulsion_trail_timer = 0.0
+
+    def _enter_hit(self) -> None:
+        self.state = PlayerState.HIT
+        self.state_timer = 0.0
+        self.invuln_frames = PLAYER_INVULN_FRAMES
+
+    def _enter_dead(self) -> None:
+        self.state = PlayerState.DEAD
+        self.state_timer = 0.0
+        self.death_timer = 0.0
+        self.is_dead = True
+
+    def _consume_bomb(self) -> None:
+        self.bombs = max(0, self.bombs - 1)
+        self.wants_to_bomb = True
+        self.input_bomb = False  # consume input
+        # Bombs are screen-wide clears; the consumer handles the effect.
+        # We don't change state here — player stays in current state.
+
+    # -----------------------------------------------------------------------
+    # Internals
+    # -----------------------------------------------------------------------
+    def _clamp_position(self) -> None:
+        # 18x16 sprite. Allow center to reach the visible border edges
+        # (9px from each side for half-sprite) so the ship can use the
+        # entire 240x360 play area defined by the border frame.
+        self.x = max(9, min(INTERNAL_W - 9, self.x))
+        self.y = max(9, min(INTERNAL_H - 9, self.y))
+
+    def get_charge_level(self) -> int:
+        """Return 0/1/2/3 based on charge_time. 0 = not charging."""
+        if self.state != PlayerState.CHARGE:
+            return 0
+        if self.charge_time >= CHARGE_L3_S:
+            return 3
+        if self.charge_time >= CHARGE_L2_S:
+            return 2
+        if self.charge_time >= CHARGE_L1_S:
+            return 1
+        return 0

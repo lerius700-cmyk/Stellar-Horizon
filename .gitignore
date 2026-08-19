@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Distribution / build
+build/
+dist/
+releases/
+*.spec
+*.manifest
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Recovery / temp
+__recover_void/
+__recover_*/
+*.tmp
+*.bak
+
+# Project-specific
+stellar_horizon/tools/playtest_out/
+stellar_horizon/assets/sprites/.wip/
+stellar_horizon/assets/midi/.wip/
+logs/
+crash.log
+stellar_horizon_crash.log
+*.log
