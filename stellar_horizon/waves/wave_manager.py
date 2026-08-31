@@ -167,7 +167,12 @@ def _build_enemies(spawn: dict, sprite_picker=None) -> list[Enemy]:
         logging.warning("chain_count %d clamped to 5 (max)", chain_count)
         chain_count = 5
 
-    offsets = _FORMATION_BUILDERS[spawn["formation"]](spawn["formation_count"], 18.0)
+    formation_obj = _FORMATION_BUILDERS[spawn["formation"]](spawn["formation_count"], 18.0)
+    # Dynamic formations return an object with .offsets(); static ones return a list.
+    if hasattr(formation_obj, "offsets") and callable(formation_obj.offsets):
+        offsets = formation_obj.offsets()
+    else:
+        offsets = formation_obj
     raw_path = _PATH_BUILDERS[spawn["path"]](spawn)
     hybrid = _path_to_hybrid(raw_path)
     kind = _KIND_MAP[spawn["enemy_kind"]]
