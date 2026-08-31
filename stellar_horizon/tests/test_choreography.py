@@ -409,3 +409,26 @@ def test_chain_count_1_means_single_enemy():
     enemies = _build_enemies(spawn)
     assert len(enemies) == 1
 
+
+# --- JSON integrity test ---
+
+def test_waves_act1_json_references_valid_paths_and_formations():
+    """All 'path' and 'formation' values in waves_act1.json must be registered in the builders."""
+    import json
+    from pathlib import Path
+    from stellar_horizon.waves.wave_manager import (
+        _PATH_BUILDERS, _FORMATION_BUILDERS,
+    )
+    json_path = Path(__file__).parent.parent / "waves" / "waves_act1.json"
+    data = json.loads(json_path.read_text(encoding="utf-8"))
+    for wave in data["waves"]:
+        for spawn in wave.get("spawns", []):
+            path = spawn.get("path")
+            formation = spawn.get("formation")
+            assert path in _PATH_BUILDERS, (
+                f"wave '{wave['id']}' spawn references unknown path '{path}'"
+            )
+            assert formation in _FORMATION_BUILDERS, (
+                f"wave '{wave['id']}' spawn references unknown formation '{formation}'"
+            )
+
