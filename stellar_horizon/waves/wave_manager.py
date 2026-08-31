@@ -146,15 +146,27 @@ def _path_to_hybrid(path) -> HybridPath:
 
 
 def _build_enemies(spawn: dict, sprite_picker=None) -> list[Enemy]:
-    """Build the enemies for a single spawn entry.
+    """Build the enemies for a single spawn entry, including chain expansion.
+
+    If `chain_count >= 2`, the spawn is expanded into N independent chain links,
+    each with its own set of formation_count enemies. The chain_count is clamped
+    to 1-5.
 
     Args:
-        spawn: dict from the wave JSON (formation/path/enemy_kind).
+        spawn: dict from the wave JSON (formation/path/enemy_kind/chain_count).
         sprite_picker: optional callable `kind -> str` that returns the
             sprite variant name to assign to each enemy. If None, the
             enemy leaves sprite_name empty and the draw code falls back
             to the kind's default sprite.
     """
+    chain_count = int(spawn.get("chain_count", 1))
+    if chain_count < 1:
+        chain_count = 1
+    if chain_count > 5:
+        import logging
+        logging.warning("chain_count %d clamped to 5 (max)", chain_count)
+        chain_count = 5
+
     offsets = _FORMATION_BUILDERS[spawn["formation"]](spawn["formation_count"], 18.0)
     raw_path = _PATH_BUILDERS[spawn["path"]](spawn)
     hybrid = _path_to_hybrid(raw_path)
@@ -164,15 +176,17 @@ def _build_enemies(spawn: dict, sprite_picker=None) -> list[Enemy]:
     sprite_name = ""
     if sprite_picker is not None:
         sprite_name = sprite_picker(spawn["enemy_kind"]) or ""
+
     enemies: list[Enemy] = []
-    for dx, dy in offsets:
-        e = Enemy()
-        e.kind = kind
-        e.sprite_name = sprite_name
-        e.on_spawn()
-        follower = PathFollower(hybrid)
-        e.attach_path(follower, slot_dx=dx, slot_dy=dy)
-        enemies.append(e)
+    for _chain_index in range(chain_count):
+        for dx, dy in offsets:
+            e = Enemy()
+            e.kind = kind
+            e.sprite_name = sprite_name
+            e.on_spawn()
+            follower = PathFollower(hybrid)
+            e.attach_path(follower, slot_dx=dx, slot_dy=dy)
+            enemies.append(e)
     return enemies
 
 
@@ -206,9 +220,28 @@ class WaveManager:
             return
         wave = self.waves[self.current_wave_index]
         for spawn in wave.spawns:
-            self.spawn_queue.append(
-                (spawn["delay_s"], _build_enemies(spawn, self._sprite_picker))
-            )
+            chain_count = int(spawn.get("chain_count", 1))
+            chain_delay_s = float(spawn.get("chain_delay_s", 0.5))
+            if chain_count < 1:
+                chain_count = 1
+            if chain_count > 5:
+                import logging
+                logging.warning(
+                    "chain_count %d clamped to 5 (max) in wave '%s'",
+                    chain_count, wave.id,
+                )
+                chain_count = 5
+            # The spawn's enemies are partitioned by chain link: each link has
+            # formation_count enemies, in order. Total = chain_count * formation_count.
+            enemies = _build_enemies(spawn, self._sprite_picker)
+            per_link = spawn["formation_count"]
+            for k in range(chain_count):
+                start_idx = k * per_link
+                end_idx = start_idx + per_link
+                link_enemies = list(enemies[start_idx:end_idx])
+                self.spawn_queue.append(
+                    (spawn["delay_s"] + k * chain_delay_s, link_enemies)
+                )
         self.spawn_queue.sort(key=lambda x: x[0])
 
     def update(self, dt: float) -> list[Enemy]:

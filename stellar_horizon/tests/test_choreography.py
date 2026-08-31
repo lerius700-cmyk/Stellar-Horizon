@@ -334,3 +334,78 @@ def test_kind_fallback_uses_valid_names():
         assert cfg["path"] in _PATH_BUILDERS, f"fallback for {kind} has invalid path"
         assert cfg["formation"] in _FORMATION_BUILDERS, f"fallback for {kind} has invalid formation"
 
+
+# --- Chain expansion tests ---
+
+def test_chain_expansion_creates_n_enemies():
+    spawn = {
+        "delay_s": 5.0,
+        "formation": "train_chain",
+        "formation_count": 1,
+        "enemy_kind": "bomber",
+        "path": "s_right_to_left",
+        "chain_count": 3,
+        "chain_delay_s": 0.4,
+    }
+    enemies = _build_enemies(spawn)
+    assert len(enemies) == 3, f"chain_count=3 should produce 3 enemies, got {len(enemies)}"
+
+
+def test_chain_expansion_progressive_delays():
+    """The chain expansion should set progressive delays in the spawn_queue."""
+    import tempfile
+    from pathlib import Path
+    from stellar_horizon.waves.wave_manager import WaveManager
+    json_content = """{
+        "act": 1, "act_name": "Test", "background": "act1_asteroid_belt",
+        "midi_track": "act1.mid", "boss": null,
+        "waves": [{
+            "id": "w1", "duration_s": 20.0,
+            "spawns": [{
+                "delay_s": 5.0,
+                "formation": "train_chain", "formation_count": 1,
+                "enemy_kind": "bomber", "path": "s_right_to_left",
+                "chain_count": 3, "chain_delay_s": 0.4
+            }]
+        }]
+    }"""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        f.write(json_content)
+        f.flush()
+        wm = WaveManager(Path(f.name))
+        wm.begin()
+        delays = [t for t, _ in wm.spawn_queue]
+        assert len(delays) == 3, f"expected 3 spawn times, got {len(delays)}"
+        assert abs(delays[0] - 5.0) < 0.01
+        assert abs(delays[1] - 5.4) < 0.01
+        assert abs(delays[2] - 5.8) < 0.01
+
+
+def test_chain_expansion_clamps_to_max_5():
+    spawn = {
+        "delay_s": 5.0, "formation": "train_chain", "formation_count": 1,
+        "enemy_kind": "bomber", "path": "s_right_to_left",
+        "chain_count": 10,  # over the cap
+    }
+    enemies = _build_enemies(spawn)
+    assert len(enemies) == 5, f"chain_count=10 should clamp to 5, got {len(enemies)}"
+
+
+def test_no_chain_count_means_single_enemy():
+    spawn = {
+        "delay_s": 5.0, "formation": "line_horizontal", "formation_count": 3,
+        "enemy_kind": "scout", "path": "s_right_to_left",
+    }
+    enemies = _build_enemies(spawn)
+    assert len(enemies) == 3, f"no chain_count should produce formation_count enemies, got {len(enemies)}"
+
+
+def test_chain_count_1_means_single_enemy():
+    spawn = {
+        "delay_s": 5.0, "formation": "train_chain", "formation_count": 1,
+        "enemy_kind": "bomber", "path": "s_right_to_left",
+        "chain_count": 1, "chain_delay_s": 0.4,
+    }
+    enemies = _build_enemies(spawn)
+    assert len(enemies) == 1
+
