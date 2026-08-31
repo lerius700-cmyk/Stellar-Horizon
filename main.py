@@ -21,7 +21,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  FPS target: {FPS_TARGET}")
         return 0
     from stellar_horizon.core.game import Game
-    g = Game()
+    # Resolve the wave JSON to an absolute path based on this file's location,
+    # not the current working directory. This way the .exe (which is launched
+    # by double-clicking with CWD = dist/) can find the JSON regardless of
+    # where it's run from.
+    project_root = Path(__file__).resolve().parent
+    wave_json = project_root / "stellar_horizon" / "waves" / "waves_act1.json"
+    g = Game(wave_json=wave_json)
     if args.duration > 0:
         import time
         start = time.perf_counter()

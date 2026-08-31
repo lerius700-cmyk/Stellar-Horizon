@@ -14,8 +14,19 @@ class TitleScene(Scene):
     name = SceneName.TITLE
 
     def __init__(self, midi_player: MidiPlayer, midi_path: str,
-                 wave_json: Path = Path("stellar_horizon/waves/waves_act1.json"),
-                 assets_dir: Path = Path("stellar_horizon/assets")) -> None:
+                 wave_json: Path | None = None,
+                 assets_dir: Path | None = None) -> None:
+        # Resolve defaults to absolute paths based on this file's location,
+        # not CWD. This way the .exe works regardless of where it's launched from.
+        if assets_dir is None:
+            assets_dir = (
+                Path(__file__).resolve().parent.parent / "assets"
+            )
+        if wave_json is None:
+            wave_json = (
+                Path(__file__).resolve().parent.parent
+                / "waves" / "waves_act1.json"
+            )
         self.midi_player = midi_player
         self.midi_path = midi_path
         self.wave_json = wave_json

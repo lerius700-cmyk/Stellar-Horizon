@@ -38,13 +38,22 @@ def _detect_scale() -> float:
 
 
 class Game:
-    def __init__(self, assets_dir: Path | None = None) -> None:
+    def __init__(self, assets_dir: Path | None = None,
+                 wave_json: Path | None = None) -> None:
         pygame.init()
         pygame.mixer.init()
-        # assets_dir: default is stellar_horizon/assets (inside the stellar_horizon package)
+        # assets_dir: default is stellar_horizon/assets (resolved via __file__,
+        # not CWD, so the .exe works regardless of where it's launched from)
         if assets_dir is None:
             assets_dir = Path(__file__).resolve().parent.parent / "assets"
+        # wave_json: same — default to <project>/stellar_horizon/waves/waves_act1.json
+        if wave_json is None:
+            wave_json = (
+                Path(__file__).resolve().parent.parent
+                / "stellar_horizon" / "waves" / "waves_act1.json"
+            )
         self.assets_dir = assets_dir
+        self.wave_json = wave_json
         scale = _detect_scale()
         win_w = int(INTERNAL_W * scale)
         win_h = int(INTERNAL_H * scale)
@@ -59,7 +68,7 @@ class Game:
         title = TitleScene(
             self.midi_player,
             str(title_midi),
-            wave_json=Path("stellar_horizon/waves/waves_act1.json"),
+            wave_json=self.wave_json,
             assets_dir=self.assets_dir,
         )
         self.scenes = SceneManager(title)
