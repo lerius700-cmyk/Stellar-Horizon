@@ -113,11 +113,13 @@
         },
         {
           "delay_s": 7.0,
-          "formation": "line_horizontal",
-          "formation_count": 2,
+          "formation": "swept_wing",
+          "formation_count": 1,
           "enemy_kind": "bomber",
           "path": "s_right_to_left",
-          "path_y_offset": -50
+          "path_y_offset": -50,
+          "chain_count": 3,
+          "chain_delay_s": 0.4
         },
         {
           "delay_s": 10.0,
