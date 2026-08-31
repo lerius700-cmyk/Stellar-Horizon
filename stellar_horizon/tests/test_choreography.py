@@ -13,14 +13,13 @@ from stellar_horizon.waves.bezier_horizontal import (
     path_sine_bend,
     path_staircase,
 )
-# Formation imports added in Task 2
-# from stellar_horizon.waves.formations_h import (
-#     boomerang_arc,
-#     phalanx_box,
-#     rotating_ring,
-#     swept_wing,
-#     train_chain,
-# )
+from stellar_horizon.waves.formations_h import (
+    boomerang_arc,
+    phalanx_box,
+    rotating_ring,
+    swept_wing,
+    train_chain,
+)
 # wave_manager imports added in Tasks 3-5
 # from stellar_horizon.waves.wave_manager import (
 #     _KIND_DEFAULTS_BY_WAVE,
@@ -167,4 +166,86 @@ def test_pull_back_returns_to_enemy_side():
     points = _simulate_path(path)
     end_x = points[-1][0]
     assert end_x > 200, f"pull_back ended at x={end_x} (expected to return toward right side)"
+
+
+# --- Formation tests ---
+
+def test_phalanx_box_3x3_returns_9_offsets():
+    offsets = phalanx_box(count=9, spacing=16.0)
+    assert len(offsets) == 9
+    for dx, dy in offsets:
+        assert -50.0 <= dx <= 50.0
+        assert -50.0 <= dy <= 50.0
+
+
+def test_phalanx_box_4x4_returns_16_offsets():
+    offsets = phalanx_box(count=16, spacing=14.0)
+    assert len(offsets) == 16
+
+
+def test_phalanx_box_clamps_to_count():
+    """If count=7, phalanx_box should still return 7 offsets (not 9 or 16)."""
+    offsets = phalanx_box(count=7, spacing=16.0)
+    assert len(offsets) == 7
+
+
+def test_swept_wing_5_returns_5_offsets():
+    offsets = swept_wing(count=5, spacing=20.0)
+    assert len(offsets) == 5
+    for dx, dy in offsets:
+        assert -80.0 <= dx <= 80.0
+        assert -40.0 <= dy <= 40.0
+
+
+def test_swept_wing_10_returns_10_offsets():
+    offsets = swept_wing(count=10, spacing=18.0)
+    assert len(offsets) == 10
+
+
+def test_train_chain_5_returns_5_offsets():
+    offsets = train_chain(count=5, spacing=20.0)
+    assert len(offsets) == 5
+    # All offsets should be roughly collinear (same y)
+    ys = [dy for dx, dy in offsets]
+    assert max(ys) - min(ys) < 5.0, f"train_chain not collinear: ys={ys}"
+
+
+def test_train_chain_offsets_are_in_front_of_leader():
+    """In a chain, the leader is at the front (most negative X) and followers trail behind."""
+    offsets = train_chain(count=5, spacing=20.0)
+    xs = [dx for dx, dy in offsets]
+    # Leader should be the leftmost (most negative X) since they move right-to-left
+    assert xs[0] == min(xs), f"train_chain leader not at front: xs={xs}"
+
+
+def test_boomerang_arc_returns_n_offsets():
+    obj = boomerang_arc(count=5, spacing=18.0)
+    assert len(obj.offsets()) == 5
+
+
+def test_boomerang_arc_phase_changes_offsets():
+    """boomerang_arc is dynamic — calling its update should change the offsets."""
+    obj = boomerang_arc(count=5, spacing=18.0)
+    obj.update(0.0)
+    after_zero = obj.offsets()
+    obj.update(1.0)
+    after_one_sec = obj.offsets()
+    assert after_zero != after_one_sec, (
+        "boomerang_arc did not change offsets over time"
+    )
+
+
+def test_rotating_ring_returns_n_offsets():
+    obj = rotating_ring(count=6, spacing=20.0)
+    assert len(obj.offsets()) == 6
+
+
+def test_rotating_ring_phase_rotates_offsets():
+    """rotating_ring should rotate the offsets over time (angle changes)."""
+    obj = rotating_ring(count=6, spacing=20.0)
+    obj.update(0.0)
+    initial = obj.offsets()
+    obj.update(0.5)  # 0.5s of rotation
+    after_half = obj.offsets()
+    assert initial != after_half, "rotating_ring did not rotate offsets over 0.5s"
 
