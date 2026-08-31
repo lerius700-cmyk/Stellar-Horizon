@@ -60,7 +60,7 @@
       "spawns": [
         {
           "delay_s": 0.0,
-          "formation": "diamond_pointing_left",
+          "formation": "phalanx_box",
           "formation_count": 3,
           "enemy_kind": "heavy",
           "path": "s_right_to_left",
@@ -78,7 +78,7 @@
           "formation": "wedge_pointing_left",
           "formation_count": 5,
           "enemy_kind": "cruiser",
-          "path": "s_right_to_left",
+          "path": "sine_bend",
           "path_y_offset": -20
         },
         {
