@@ -35,6 +35,68 @@ from stellar_horizon.waves.formations_h import (
 from stellar_horizon.waves.wave_specs import WaveSpec
 
 
+# Default movement per enemy kind per wave (length 5: waves 1-5).
+# When a wave JSON spawn doesn't specify path/formation, the defaults are used.
+# UFO and KAMIKAZE keep their custom paths (ufo_entry, kamikaze_dive) per design spec.
+_KIND_DEFAULTS_BY_WAVE: list[dict] = [
+    # Wave 1 — intro
+    {
+        EnemyKind.SCOUT:    {"path": "sine_bend",         "formation": "line_horizontal"},
+        EnemyKind.CRUISER:  {"path": "s_right_to_left",   "formation": "boomerang_arc"},
+        EnemyKind.HEAVY:    {"path": "staircase",         "formation": "phalanx_box"},
+        EnemyKind.BOMBER:   {"path": "s_right_to_left",   "formation": "train_chain"},
+        EnemyKind.UFO:      {"path": "ufo_entry",         "formation": "line_horizontal"},
+        EnemyKind.KAMIKAZE: {"path": "kamikaze_dive",     "formation": "v_pointing_left"},
+    },
+    # Wave 2 — scouts + cruisers
+    {
+        EnemyKind.SCOUT:    {"path": "figure_eight",      "formation": "line_horizontal"},
+        EnemyKind.CRUISER:  {"path": "s_right_to_left",   "formation": "boomerang_arc"},
+        EnemyKind.HEAVY:    {"path": "staircase",         "formation": "phalanx_box"},
+        EnemyKind.BOMBER:   {"path": "s_right_to_left",   "formation": "train_chain"},
+        EnemyKind.UFO:      {"path": "ufo_entry",         "formation": "line_horizontal"},
+        EnemyKind.KAMIKAZE: {"path": "kamikaze_dive",     "formation": "v_pointing_left"},
+    },
+    # Wave 3 — heavies join
+    {
+        EnemyKind.SCOUT:    {"path": "boomerang",         "formation": "v_pointing_left"},
+        EnemyKind.CRUISER:  {"path": "sine_bend",         "formation": "boomerang_arc"},
+        EnemyKind.HEAVY:    {"path": "s_right_to_left",   "formation": "phalanx_box"},
+        EnemyKind.BOMBER:   {"path": "s_right_to_left",   "formation": "train_chain"},
+        EnemyKind.UFO:      {"path": "ufo_entry",         "formation": "line_horizontal"},
+        EnemyKind.KAMIKAZE: {"path": "kamikaze_dive",     "formation": "v_pointing_left"},
+    },
+    # Wave 4 — bombers introduced
+    {
+        EnemyKind.SCOUT:    {"path": "sine_bend",         "formation": "v_pointing_left"},
+        EnemyKind.CRUISER:  {"path": "s_right_to_left",   "formation": "swept_wing"},
+        EnemyKind.HEAVY:    {"path": "staircase",         "formation": "phalanx_box"},
+        EnemyKind.BOMBER:   {"path": "s_right_to_left",   "formation": "swept_wing"},
+        EnemyKind.UFO:      {"path": "ufo_entry",         "formation": "line_horizontal"},
+        EnemyKind.KAMIKAZE: {"path": "kamikaze_dive",     "formation": "v_pointing_left"},
+    },
+    # Wave 5 — UFO + kamikaze
+    {
+        EnemyKind.SCOUT:    {"path": "figure_eight",      "formation": "line_horizontal"},
+        EnemyKind.CRUISER:  {"path": "sine_bend",         "formation": "boomerang_arc"},
+        EnemyKind.HEAVY:    {"path": "s_right_to_left",   "formation": "phalanx_box"},
+        EnemyKind.BOMBER:   {"path": "s_right_to_left",   "formation": "train_chain"},
+        EnemyKind.UFO:      {"path": "ufo_entry",         "formation": "line_horizontal"},
+        EnemyKind.KAMIKAZE: {"path": "kamikaze_dive",     "formation": "v_pointing_left"},
+    },
+]
+
+# Fallback used when a kind has no entry in the wave's defaults (e.g. future kind added).
+_KIND_FALLBACK: dict = {
+    EnemyKind.SCOUT:    {"path": "s_right_to_left", "formation": "line_horizontal"},
+    EnemyKind.CRUISER:  {"path": "s_right_to_left", "formation": "v_pointing_left"},
+    EnemyKind.HEAVY:    {"path": "s_right_to_left", "formation": "diamond_pointing_left"},
+    EnemyKind.BOMBER:   {"path": "s_right_to_left", "formation": "line_horizontal"},
+    EnemyKind.UFO:      {"path": "ufo_entry",       "formation": "line_horizontal"},
+    EnemyKind.KAMIKAZE: {"path": "kamikaze_dive",   "formation": "v_pointing_left"},
+}
+
+
 _PATH_BUILDERS = {
     "s_right_to_left": lambda kw: path_s_right_to_left(y_offset=kw.get("path_y_offset", 0)),
     "top_dive":         lambda kw: path_top_dive(side=kw.get("path_side", "right")),

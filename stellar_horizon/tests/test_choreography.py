@@ -21,11 +21,11 @@ from stellar_horizon.waves.formations_h import (
     train_chain,
 )
 # wave_manager imports added in Tasks 3-5
-# from stellar_horizon.waves.wave_manager import (
-#     _KIND_DEFAULTS_BY_WAVE,
-#     _KIND_FALLBACK,
-#     _build_enemies,
-# )
+from stellar_horizon.waves.wave_manager import (
+    _KIND_DEFAULTS_BY_WAVE,
+    _KIND_FALLBACK,
+    _build_enemies,
+)
 
 
 # --- Bezier path tests ---
@@ -279,4 +279,58 @@ def test_path_builder_returns_path_object():
     assert isinstance(path, (BezierPath, HybridPath)), (
         f"sine_bend did not return BezierPath or HybridPath, got {type(path)}"
     )
+
+
+# --- Defaults table tests ---
+
+def test_kind_defaults_by_wave_has_5_entries():
+    from stellar_horizon.waves.wave_manager import _KIND_DEFAULTS_BY_WAVE
+    assert len(_KIND_DEFAULTS_BY_WAVE) == 5, (
+        f"_KIND_DEFAULTS_BY_WAVE should have 5 wave entries, got {len(_KIND_DEFAULTS_BY_WAVE)}"
+    )
+
+
+def test_kind_defaults_by_wave_covers_all_kinds():
+    from stellar_horizon.entities.enemy import EnemyKind
+    from stellar_horizon.waves.wave_manager import _KIND_DEFAULTS_BY_WAVE
+    expected_kinds = {EnemyKind.SCOUT, EnemyKind.CRUISER, EnemyKind.HEAVY,
+                      EnemyKind.BOMBER, EnemyKind.UFO, EnemyKind.KAMIKAZE}
+    for i, wave_defaults in enumerate(_KIND_DEFAULTS_BY_WAVE):
+        actual_kinds = set(wave_defaults.keys())
+        assert expected_kinds.issubset(actual_kinds), (
+            f"wave {i} defaults missing kinds: {expected_kinds - actual_kinds}"
+        )
+
+
+def test_kind_defaults_use_valid_path_and_formation_names():
+    from stellar_horizon.waves.wave_manager import (
+        _KIND_DEFAULTS_BY_WAVE, _PATH_BUILDERS, _FORMATION_BUILDERS,
+    )
+    for i, wave_defaults in enumerate(_KIND_DEFAULTS_BY_WAVE):
+        for kind, cfg in wave_defaults.items():
+            path = cfg.get("path")
+            formation = cfg.get("formation")
+            assert path in _PATH_BUILDERS, (
+                f"wave {i}, kind {kind}: path '{path}' not in _PATH_BUILDERS"
+            )
+            assert formation in _FORMATION_BUILDERS, (
+                f"wave {i}, kind {kind}: formation '{formation}' not in _FORMATION_BUILDERS"
+            )
+
+
+def test_kind_fallback_has_all_kinds():
+    from stellar_horizon.entities.enemy import EnemyKind
+    from stellar_horizon.waves.wave_manager import _KIND_FALLBACK
+    expected_kinds = {EnemyKind.SCOUT, EnemyKind.CRUISER, EnemyKind.HEAVY,
+                      EnemyKind.BOMBER, EnemyKind.UFO, EnemyKind.KAMIKAZE}
+    assert expected_kinds.issubset(set(_KIND_FALLBACK.keys()))
+
+
+def test_kind_fallback_uses_valid_names():
+    from stellar_horizon.waves.wave_manager import (
+        _KIND_FALLBACK, _PATH_BUILDERS, _FORMATION_BUILDERS,
+    )
+    for kind, cfg in _KIND_FALLBACK.items():
+        assert cfg["path"] in _PATH_BUILDERS, f"fallback for {kind} has invalid path"
+        assert cfg["formation"] in _FORMATION_BUILDERS, f"fallback for {kind} has invalid formation"
 
