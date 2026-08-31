@@ -92,3 +92,104 @@ def path_kamikaze_dive(y_offset: float = 0.0) -> BezierPath:
         p2=Point(360, 115 + y_offset),
         p3=Point(310, 140 + y_offset),
     )
+
+
+# --- New paths (Task 1: choreographed enemy movement) ---
+
+def path_sine_bend() -> BezierPath:
+    """Long smooth sinusoid. Enters from off-screen right, glides left in a wave."""
+    return BezierPath(
+        p0=Point(490, 130),
+        p1=Point(360, 60),
+        p2=Point(120, 200),
+        p3=Point(-20, 135),
+    )
+
+
+def path_figure_eight() -> HybridPath:
+    """Horizontal figure-8: enters from right, crosses midline, loops back, exits left."""
+    return HybridPath.from_segments([
+        BezierPath(
+            p0=Point(490, 135),
+            p1=Point(360, 80),
+            p2=Point(120, 190),
+            p3=Point(240, 135),
+        ),
+        WaypointPath(
+            # Crosses midline multiple times to form a figure-8 in screen space
+            [Point(240, 135), Point(380, 90), Point(450, 130),
+             Point(380, 180), Point(240, 135), Point(100, 90),
+             Point(50, 130), Point(100, 180), Point(240, 135),
+             Point(100, 90), Point(-20, 135)],
+            speed_px_s=200.0,
+        ),
+    ])
+
+
+def path_boomerang() -> HybridPath:
+    """Boomerang: enters from right, makes a U-turn mid-screen, exits back to the right."""
+    return HybridPath.from_segments([
+        BezierPath(
+            p0=Point(490, 135),
+            p1=Point(380, 100),
+            p2=Point(220, 200),
+            p3=Point(120, 135),
+        ),
+        WaypointPath(
+            [Point(120, 135), Point(220, 80), Point(380, 100), Point(490, 135), Point(540, 200)],
+            speed_px_s=220.0,
+        ),
+    ])
+
+
+def path_staircase() -> HybridPath:
+    """Staircase: descends in 3 steps. Predictable, readable for heavy enemies.
+    y values INCREASE over time (descending visually = y growing).
+    """
+    return HybridPath.from_segments([
+        BezierPath(
+            p0=Point(490, 30),
+            p1=Point(360, 60),
+            p2=Point(280, 100),
+            p3=Point(300, 110),
+        ),
+        WaypointPath(
+            [Point(300, 110), Point(220, 110), Point(200, 150), Point(220, 180), Point(150, 200), Point(80, 220), Point(-20, 240)],
+            speed_px_s=180.0,
+        ),
+    ])
+
+
+def path_loop_horizontal() -> HybridPath:
+    """Single closed loop: enters from right, does one full circle in the center, exits left."""
+    return HybridPath.from_segments([
+        BezierPath(
+            p0=Point(490, 135),
+            p1=Point(420, 100),
+            p2=Point(380, 130),
+            p3=Point(340, 135),
+        ),
+        WaypointPath(
+            # Circle: 8 waypoints forming a closed loop around (240, 135), radius ~50
+            [Point(340, 135), Point(290, 90), Point(240, 85), Point(190, 90),
+             Point(140, 135), Point(190, 180), Point(240, 185), Point(290, 180),
+             Point(340, 135), Point(280, 135), Point(180, 135), Point(80, 135), Point(-20, 135)],
+            speed_px_s=220.0,
+        ),
+    ])
+
+
+def path_pull_back() -> HybridPath:
+    """Pull-back: enters from right, retreats halfway, comes back hard toward the player."""
+    return HybridPath.from_segments([
+        BezierPath(
+            p0=Point(490, 135),
+            p1=Point(380, 110),
+            p2=Point(300, 150),
+            p3=Point(380, 145),
+        ),
+        WaypointPath(
+            [Point(380, 145), Point(420, 130), Point(490, 125), Point(540, 130)],
+            speed_px_s=280.0,
+        ),
+    ])
