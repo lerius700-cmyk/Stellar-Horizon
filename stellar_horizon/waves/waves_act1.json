@@ -30,7 +30,7 @@
       "spawns": [
         {
           "delay_s": 0.0,
-          "formation": "line_horizontal",
+          "formation": "boomerang_arc",
           "formation_count": 5,
           "enemy_kind": "cruiser",
           "path": "s_right_to_left",
