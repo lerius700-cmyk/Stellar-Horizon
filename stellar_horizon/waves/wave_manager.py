@@ -9,15 +9,26 @@ from src.movement import BezierPath, HybridPath, PathFollower
 from stellar_horizon.entities.enemy import Enemy, EnemyKind
 from stellar_horizon.waves.bezier_horizontal import (
     path_boss_entry,
+    path_boomerang,
+    path_figure_eight,
     path_kamikaze_dive,
+    path_loop_horizontal,
+    path_pull_back,
     path_s_right_to_left,
+    path_sine_bend,
+    path_staircase,
     path_top_dive,
     path_ufo_entry,
     path_zigzag_exit_top,
 )
 from stellar_horizon.waves.formations_h import (
+    boomerang_arc,
     diamond_pointing_left,
     line_horizontal,
+    phalanx_box,
+    rotating_ring,
+    swept_wing,
+    train_chain,
     v_pointing_left,
     wedge_pointing_left,
 )
@@ -31,6 +42,13 @@ _PATH_BUILDERS = {
     "boss_entry":       lambda kw: path_boss_entry(),
     "ufo_entry":        lambda kw: path_ufo_entry(y_offset=kw.get("path_y_offset", 0)),
     "kamikaze_dive":    lambda kw: path_kamikaze_dive(y_offset=kw.get("path_y_offset", 0)),
+    # New paths (Task 1)
+    "sine_bend":        lambda kw: path_sine_bend(),
+    "figure_eight":     lambda kw: path_figure_eight(),
+    "boomerang":        lambda kw: path_boomerang(),
+    "staircase":        lambda kw: path_staircase(),
+    "loop_horizontal":  lambda kw: path_loop_horizontal(),
+    "pull_back":        lambda kw: path_pull_back(),
 }
 
 _FORMATION_BUILDERS = {
@@ -38,6 +56,12 @@ _FORMATION_BUILDERS = {
     "line_horizontal":       lambda count, spacing: line_horizontal(count, spacing),
     "diamond_pointing_left": lambda count, spacing: diamond_pointing_left(count, spacing),
     "wedge_pointing_left":   lambda count, spacing: wedge_pointing_left(count, spacing),
+    # New formations (Task 2)
+    "phalanx_box":           lambda count, spacing: phalanx_box(count, spacing),
+    "swept_wing":            lambda count, spacing: swept_wing(count, spacing),
+    "train_chain":           lambda count, spacing: train_chain(count, spacing),
+    "boomerang_arc":         lambda count, spacing: boomerang_arc(count, spacing),
+    "rotating_ring":         lambda count, spacing: rotating_ring(count, spacing),
 }
 
 _KIND_MAP = {

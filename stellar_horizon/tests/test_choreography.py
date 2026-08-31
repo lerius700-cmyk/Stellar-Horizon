@@ -249,3 +249,34 @@ def test_rotating_ring_phase_rotates_offsets():
     after_half = obj.offsets()
     assert initial != after_half, "rotating_ring did not rotate offsets over 0.5s"
 
+
+# --- Builder registration tests ---
+
+def test_path_builders_include_new_paths():
+    from stellar_horizon.waves.wave_manager import _PATH_BUILDERS
+    for name in ["sine_bend", "figure_eight", "boomerang", "staircase", "loop_horizontal", "pull_back"]:
+        assert name in _PATH_BUILDERS, f"path {name} not registered"
+
+
+def test_formation_builders_include_new_formations():
+    from stellar_horizon.waves.wave_manager import _FORMATION_BUILDERS
+    for name in ["phalanx_box", "swept_wing", "train_chain", "boomerang_arc", "rotating_ring"]:
+        assert name in _FORMATION_BUILDERS, f"formation {name} not registered"
+
+
+def test_formation_builders_dynamic_have_update():
+    """Dynamic formation builders should return objects with an update method."""
+    from stellar_horizon.waves.wave_manager import _FORMATION_BUILDERS
+    obj = _FORMATION_BUILDERS["boomerang_arc"](5, 18.0)
+    assert hasattr(obj, "update"), "boomerang_arc result missing update()"
+    assert hasattr(obj, "offsets"), "boomerang_arc result missing offsets()"
+
+
+def test_path_builder_returns_path_object():
+    from stellar_horizon.waves.wave_manager import _PATH_BUILDERS
+    from src.movement import BezierPath, HybridPath
+    path = _PATH_BUILDERS["sine_bend"]({})
+    assert isinstance(path, (BezierPath, HybridPath)), (
+        f"sine_bend did not return BezierPath or HybridPath, got {type(path)}"
+    )
+
