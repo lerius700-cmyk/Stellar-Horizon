@@ -195,3 +195,48 @@ def test_engine_flame_size_scales_with_size_scale():
         )
     finally:
         pygame.quit()
+
+
+# --- Enemy engine flame + trail tests ---
+
+def test_enemy_has_engine_flame_after_on_spawn():
+    from stellar_horizon.entities.enemy import Enemy
+    e = Enemy()
+    e.kind = "scout"
+    e.on_spawn()
+    assert e.flame is not None, "Enemy should have an EngineFlame after on_spawn"
+
+
+def test_enemy_engine_flame_color_matches_kind():
+    from stellar_horizon.entities.enemy import Enemy, EnemyKind
+    e = Enemy()
+    e.kind = EnemyKind.SCOUT
+    e.on_spawn()
+    # Scout's flame is light blue
+    assert e.flame.base_color[2] >= 200, (
+        f"SCOUT flame should have high blue, got {e.flame.base_color}"
+    )
+
+
+def test_enemy_emits_trail_particles_when_moving():
+    """A moving enemy should emit trail particles via update()."""
+    from stellar_horizon.entities.enemy import Enemy
+    from src.movement import BezierPath, HybridPath, PathFollower, Point
+
+    fx = FxLayer(pool_size=64)
+    e = Enemy()
+    e.kind = "scout"
+    e.on_spawn()
+    e.fx = fx
+    # Wrap a BezierPath in HybridPath (the same way wave_manager does)
+    bp = BezierPath(
+        p0=Point(490, 135), p1=Point(360, 135),
+        p2=Point(120, 135), p3=Point(-20, 135),
+    )
+    path = HybridPath([bp], [max(0.5, bp.length_estimate / 80.0)])
+    e.attach_path(PathFollower(path), slot_dx=0.0, slot_dy=0.0)
+    # Run several ticks
+    for _ in range(30):
+        e.update(1 / 60, player=None)
+    active = [p for p in fx.particles if p.active]
+    assert len(active) > 0, f"moving enemy should emit trail particles, got {len(active)}"

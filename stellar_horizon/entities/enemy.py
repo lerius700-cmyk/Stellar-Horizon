@@ -17,6 +17,8 @@ import math
 import pygame
 from src.movement import PathFollower
 
+from stellar_horizon.fx.engine_flames import EngineFlame
+
 
 class EnemyKind:
     SCOUT = "scout"
@@ -38,6 +40,27 @@ _TYPE_PARAMS = {
 }
 
 
+# Per-enemy-kind engine flame colors (matches the kind's theme).
+_ENEMY_FLAME_COLORS = {
+    EnemyKind.SCOUT:    (180, 220, 255),  # cool blue
+    EnemyKind.CRUISER:  (255, 200, 100),  # warm amber
+    EnemyKind.HEAVY:    (255, 140, 80),   # orange (heavy thrust)
+    EnemyKind.BOMBER:   (255, 100, 60),   # red-orange
+    EnemyKind.UFO:      (200, 100, 255),  # purple (anti-grav)
+    EnemyKind.KAMIKAZE: (255, 80, 80),    # hot red (ramming)
+}
+
+# Per-enemy-kind trail intensity (0..1). Faster / more aggressive kinds trail more.
+_ENEMY_TRAIL_INTENSITY = {
+    EnemyKind.SCOUT: 0.6,
+    EnemyKind.CRUISER: 0.4,
+    EnemyKind.HEAVY: 0.2,
+    EnemyKind.BOMBER: 0.4,
+    EnemyKind.UFO: 0.3,
+    EnemyKind.KAMIKAZE: 0.9,
+}
+
+
 class Enemy:
     __slots__ = (
         "x", "y", "vx", "vy", "kind", "hp", "max_hp", "alive",
@@ -52,6 +75,8 @@ class Enemy:
         "sprite_name",
         # VFX (set by the gameplay scene; used by take_damage and update).
         "fx",               # FxLayer reference for particle emission
+        "flame",            # EngineFlame instance
+        "trail_intensity",  # 0..1, how much trail to emit
     )
 
     def __init__(self) -> None:
@@ -76,6 +101,8 @@ class Enemy:
         self.kamikaze_charge: float = 0.0
         self.sprite_name: str = ""
         self.fx = None  # FxLayer injected by GameplayScene on spawn
+        self.flame: EngineFlame | None = None
+        self.trail_intensity: float = 0.0
 
     def on_spawn(self) -> None:
         params = _TYPE_PARAMS.get(self.kind, _TYPE_PARAMS[EnemyKind.SCOUT])
@@ -90,6 +117,11 @@ class Enemy:
         self.ufo_phase = 0.0
         self.ufo_base_y = 0.0
         self.kamikaze_charge = 0.0
+        # Visual polish: engine flame and trail intensity
+        self.flame = EngineFlame(
+            base_color=_ENEMY_FLAME_COLORS.get(self.kind, (255, 200, 100))
+        )
+        self.trail_intensity = _ENEMY_TRAIL_INTENSITY.get(self.kind, 0.4)
 
     def attach_path(self, follower: PathFollower, slot_dx: float, slot_dy: float) -> None:
         self.path_follower = follower
@@ -160,6 +192,20 @@ class Enemy:
                 self.telegraphing = True
                 self.telegraph_frames = self._telegraph_frames()
                 self.shoot_cooldown = self._attack_cooldown()
+
+        # --- Visual polish: trail particles when moving ---
+        if self.fx is not None and self.trail_intensity > 0.0:
+            speed = math.hypot(self.vx, self.vy)
+            if speed > 30.0:  # Only emit trail when actually moving
+                # Anchor at the back of the ship (offset opposite to velocity)
+                if speed > 0:
+                    ax = -self.vx / speed * 4
+                    ay = -self.vy / speed * 4
+                else:
+                    ax, ay = 4.0, 0.0
+                flame_color = self.flame.base_color if self.flame else (255, 200, 100)
+                self.fx.emit_trail(self.x + ax, self.y + ay, flame_color,
+                                   intensity=self.trail_intensity)
 
         if self.x < -32 or self.y < -32 or self.y > 302:
             self.alive = False

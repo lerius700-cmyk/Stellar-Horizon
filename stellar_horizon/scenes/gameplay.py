@@ -1,6 +1,7 @@
 """Main gameplay scene: player, waves, boss, HUD, FX, audio."""
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import pygame
@@ -304,6 +305,7 @@ class GameplayScene(Scene):
     )
 
     def update(self, dt: float, events: list) -> None:
+        self._last_dt = dt
         self._keys = pygame.key.get_pressed()
         self.player.firing = self._keys[pygame.K_SPACE]
         # Advance the scene clock FIRST so any bullets spawned this
@@ -554,6 +556,12 @@ class GameplayScene(Scene):
             for e in self.wave_manager.spawned_enemies:
                 if e.alive:
                     self._draw_enemy_sprite(surface, e, ox, oy)
+                    # Engine flame: anchored at the back of the ship, sized by speed
+                    if e.flame is not None:
+                        e.flame.update(self._last_dt)
+                        speed = math.hypot(e.vx, e.vy)
+                        size_scale = 1.0 + min(2.0, speed / 100.0)
+                        e.flame.render(surface, e.x + 6, e.y, size_scale=size_scale)
         if self.boss_active and self.boss and self.boss.alive:
             self._draw_boss_sprite(surface, self.boss, ox, oy)
         if self.player.alive:
