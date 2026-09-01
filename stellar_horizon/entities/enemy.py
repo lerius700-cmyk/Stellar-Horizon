@@ -50,6 +50,8 @@ class Enemy:
         "kamikaze_charge",  # KAMIKAZE: seconds spent charging (0 = cruising)
         # Visual variant (set by the spawner, used by the draw code).
         "sprite_name",
+        # VFX (set by the gameplay scene; used by take_damage and update).
+        "fx",               # FxLayer reference for particle emission
     )
 
     def __init__(self) -> None:
@@ -73,6 +75,7 @@ class Enemy:
         self.ufo_base_y: float = 0.0
         self.kamikaze_charge: float = 0.0
         self.sprite_name: str = ""
+        self.fx = None  # FxLayer injected by GameplayScene on spawn
 
     def on_spawn(self) -> None:
         params = _TYPE_PARAMS.get(self.kind, _TYPE_PARAMS[EnemyKind.SCOUT])
@@ -195,6 +198,8 @@ class Enemy:
         self.hp -= amount
         if self.hp <= 0:
             self.alive = False
+            if self.fx is not None:
+                self.fx.emit_explosion_typed(self.kind, self.x, self.y)
 
     def hitbox(self) -> pygame.Rect:
         if self.kind in (EnemyKind.HEAVY, EnemyKind.BOMBER):

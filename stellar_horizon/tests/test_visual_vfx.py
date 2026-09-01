@@ -122,3 +122,20 @@ def test_emit_player_death_creates_big_explosion():
     fx.emit_player_death(240.0, 135.0)
     active = [p for p in fx.particles if p.active]
     assert len(active) >= 20, f"player death explosion should have many particles, got {len(active)}"
+
+
+# --- Enemy explosion-on-death tests ---
+
+def test_all_enemy_kinds_call_explosion_on_death():
+    """When an enemy of any kind dies, an explosion must be emitted."""
+    from stellar_horizon.entities.enemy import Enemy
+    for kind in ["scout", "cruiser", "heavy", "bomber", "ufo", "kamikaze"]:
+        fx = FxLayer(pool_size=256)
+        e = Enemy()
+        e.kind = kind
+        e.on_spawn()
+        e.hp = 1
+        e.fx = fx
+        e.take_damage(1)
+        alive = [p for p in fx.particles if p.active]
+        assert len(alive) > 0, f"{kind} death should emit explosion particles"

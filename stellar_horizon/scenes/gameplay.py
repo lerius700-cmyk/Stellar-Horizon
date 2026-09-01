@@ -259,6 +259,7 @@ class GameplayScene(Scene):
         # 1. Add thrusters for NEW enemies (alive=True, not managed).
         for e in spawned:
             if e.alive and id(e) not in self._managed_enemies:
+                e.fx = self.fx  # Inject FxLayer so enemy can emit its own VFX
                 if self.thrusters.add_enemy(e):
                     self._managed_enemies.add(id(e))
         # 2. Remove thrusters for DEAD/MISSING enemies.
@@ -371,18 +372,15 @@ class GameplayScene(Scene):
                         sfx.play_event("hit")
                         if not e.alive:
                             self.score += e.score_value()
-                            scale = 1.0
                             trauma = 0.10
                             kill_sfx = "explode_small"
                             if e.kind in ("heavy", "bomber"):
-                                scale = 1.6
                                 trauma = 0.22
                                 kill_sfx = "explode_medium"
                             if e.kind == "kamikaze":
-                                scale = 2.0
                                 trauma = 0.30
                                 kill_sfx = "explode_medium"
-                            self.fx.emit_explosion(e.x, e.y, scale=scale)
+                            # Explosion is auto-emitted by Enemy.take_damage via emit_explosion_typed
                             self.fx.emit_impact(e.x, e.y, count=14,
                                                 color=(255, 200, 80))
                             self.shake.add_trauma(trauma)
