@@ -215,6 +215,9 @@ class WaveManager:
         self.wave_complete: bool = False
         # Optional callable (kind -> sprite_name) for visual variants.
         self._sprite_picker = sprite_picker
+        # FxLayer reference (set by GameplayScene). Used to emit chain
+        # spawn glow VFX when an FTL chain link appears.
+        self.fx = None
 
     def begin(self) -> None:
         self.spawned_enemies.clear()
@@ -247,6 +250,12 @@ class WaveManager:
                 self.spawn_queue.append(
                     (spawn["delay_s"] + k * chain_delay_s, link_enemies)
                 )
+                # Visual polish: emit a chain spawn glow for each link
+                # so the player sees where each train car materializes.
+                if self.fx is not None and link_enemies:
+                    e0 = link_enemies[0]
+                    # Approximate spawn position (off-screen right + first enemy's y)
+                    self.fx.emit_chain_spawn_glow(520.0, e0.y, k, chain_count)
         self.spawn_queue.sort(key=lambda x: x[0])
 
     def update(self, dt: float) -> list[Enemy]:

@@ -133,6 +133,7 @@ class GameplayScene(Scene):
         # sprite variant assigned to all enemies in its formation
         # (5 scouts in a V look like the same ship class).
         self.wave_manager = WaveManager(self.wave_json, sprite_picker=self._pick_enemy_sprite)
+        self.wave_manager.fx = self.fx  # For chain spawn glow emission
         self.wave_manager.begin()
         self.background = Background(self.assets_dir / "backgrounds" / f"{self.wave_manager.background}.png")
         self.midi_player.play(str(self.assets_dir / "midi" / self.wave_manager.midi_track), loop=True)

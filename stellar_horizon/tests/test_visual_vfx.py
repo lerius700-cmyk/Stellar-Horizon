@@ -273,3 +273,35 @@ def test_player_emits_trail_particles_when_thrusting():
         assert len(active) > 0, f"player should emit trail when thrusting, got {len(active)}"
     finally:
         pygame.quit()
+
+
+# --- FTL chain spawn glow tests ---
+
+def test_wave_manager_emits_chain_spawn_glow_per_link():
+    """Each link of an FTL chain should emit a glow particle burst."""
+    import json
+    import tempfile
+    from pathlib import Path
+    from stellar_horizon.waves.wave_manager import WaveManager
+    json_content = """{
+        "act": 1, "act_name": "Test", "background": "act1_asteroid_belt",
+        "midi_track": "act1.mid", "boss": null,
+        "waves": [{
+            "id": "w1", "duration_s": 20.0,
+            "spawns": [{
+                "delay_s": 5.0,
+                "formation": "train_chain", "formation_count": 1,
+                "enemy_kind": "bomber", "path": "s_right_to_left",
+                "chain_count": 3, "chain_delay_s": 0.4
+            }]
+        }]
+    }"""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        f.write(json_content)
+        f.flush()
+        wm = WaveManager(Path(f.name))
+        wm.fx = FxLayer(pool_size=128)
+        wm.begin()
+        # The chain has 3 links; begin() should have emitted 3 chain glows.
+        active = [p for p in wm.fx.particles if p.active]
+        assert len(active) > 0, f"chain should emit glow particles per link, got {len(active)}"
