@@ -27,7 +27,7 @@ import math
 import random
 
 import pygame
-from src.movement import HybridPath, PathFollower
+from stellar_horizon._systems.movement import HybridPath, PathFollower
 
 from stellar_horizon.waves.bezier_horizontal import path_boss_entry
 

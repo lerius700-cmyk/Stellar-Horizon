@@ -24,7 +24,7 @@ def _get_engine():
     if _engine is not None:
         return _engine
     try:
-        from src.audio.synth import AudioEngine  # type: ignore
+        from stellar_horizon._systems.audio.synth import AudioEngine  # type: ignore
         _engine = AudioEngine()
     except Exception:
         _engine = None

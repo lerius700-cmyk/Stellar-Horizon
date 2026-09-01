@@ -5,7 +5,7 @@ formation points in the direction enemies move (-X, i.e. right-to-left).
 """
 from __future__ import annotations
 
-from src.movement import FlightFormation
+from stellar_horizon._systems.movement import FlightFormation
 
 
 def _v_offsets_rotated(count: int, spacing: float) -> list[tuple[float, float]]:

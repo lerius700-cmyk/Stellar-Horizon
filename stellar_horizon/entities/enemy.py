@@ -15,7 +15,7 @@ from __future__ import annotations
 import math
 
 import pygame
-from src.movement import PathFollower
+from stellar_horizon._systems.movement import PathFollower
 
 from stellar_horizon.fx.engine_flames import EngineFlame
 

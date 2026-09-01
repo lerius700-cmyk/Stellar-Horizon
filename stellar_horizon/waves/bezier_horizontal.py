@@ -5,7 +5,7 @@ travels across the play area. All paths are tuned for a 480x270 viewport.
 """
 from __future__ import annotations
 
-from src.movement import BezierPath, HybridPath, Point, WaypointPath
+from stellar_horizon._systems.movement import BezierPath, HybridPath, Point, WaypointPath
 
 
 def path_s_right_to_left(y_offset: float = 0.0) -> BezierPath:

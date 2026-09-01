@@ -6,7 +6,7 @@ import random
 
 import pygame
 
-from src.systems.particle_engine import (
+from stellar_horizon._systems.systems.particle_engine import (
     P_DUST, P_FIRE, P_FLASH, P_GLOW, P_SHOCKWAVE, P_SHRAPNEL,
     P_SMOKE, P_SPARK, ParticleEngine,
 )

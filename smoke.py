@@ -25,7 +25,7 @@ def run() -> tuple[int, int, list[tuple[str, bool, str]]]:
         return f"{INTERNAL_W}x{INTERNAL_H} @ {FPS_TARGET} FPS"
 
     def g02_import_movement():
-        from src.movement import BezierPath, WaypointPath, HybridPath, FlightFormation
+        from stellar_horizon._systems.movement import BezierPath, WaypointPath, HybridPath, FlightFormation
         return "imported"
 
     def g03_bezier_horizontal_paths():

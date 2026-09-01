@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.movement import BezierPath, HybridPath, PathFollower
+from stellar_horizon._systems.movement import BezierPath, HybridPath, PathFollower
 
 from stellar_horizon.entities.enemy import Enemy, EnemyKind
 from stellar_horizon.waves.bezier_horizontal import (
