@@ -15,19 +15,29 @@ class PlayerBullet:
     # the code-driven VFX (fx/bullet_vfx.py) reads it to compute
     # alpha/scale/halo phase. `weapon` is which of the 10 weapons
     # fired this bullet so the VFX knows which animation to apply.
-    __slots__ = ("x", "y", "vx", "vy", "alive", "spawn_time", "weapon")
+    # `frame` and `frame_time` drive sprite-sheet animation (4-frame loop
+    # at 8 FPS). Falls back to no sheet animation if the sprite is single-frame.
+    __slots__ = ("x", "y", "vx", "vy", "alive", "spawn_time", "weapon",
+                 "frame", "frame_time")
 
     def __init__(self) -> None:
         self.x = self.y = self.vx = self.vy = 0.0
         self.alive = False
         self.spawn_time: float = 0.0
         self.weapon: int = 0
+        self.frame: int = 0
+        self.frame_time: float = 0.0
 
     def update(self, dt: float) -> None:
         if not self.alive:
             return
         self.x += self.vx * dt
         self.y += self.vy * dt
+        # Animate sprite sheet at 8 FPS (4-frame loop)
+        self.frame_time = (self.frame_time or 0.0) + dt
+        if self.frame_time >= 1.0 / 8.0:
+            self.frame_time = 0.0
+            self.frame = (self.frame + 1) % 4
         if self.x > 480 + 12 or self.x < -12:
             self.alive = False
 
@@ -41,13 +51,16 @@ class EnemyBullet:
     POOL_SIZE = 64
 
     __slots__ = ("x", "y", "vx", "vy", "alive", "damage",
-                 "speed_mult", "_bomb", "_bomb_fuse")
+                 "speed_mult", "_bomb", "_bomb_fuse",
+                 "frame", "frame_time")
 
     def __init__(self) -> None:
         self.x = self.y = self.vx = self.vy = 0.0
         self.damage = 1
         self.alive = False
         self.speed_mult: float = 1.0
+        self.frame: int = 0
+        self.frame_time: float = 0.0
         self._bomb: bool = False
         self._bomb_fuse: float = 0.0
 
@@ -80,6 +93,11 @@ class EnemyBullet:
             self.y += self.vy * dt
         if not (-16 <= self.x <= 496 and -16 <= self.y <= 286):
             self.alive = False
+        # Animate sprite sheet at 6 FPS (4-frame loop, slower than player bullets)
+        self.frame_time += dt
+        if self.frame_time >= 1.0 / 6.0:
+            self.frame_time = 0.0
+            self.frame = (self.frame + 1) % 4
 
     def hitbox(self) -> pygame.Rect:
         if self._bomb:

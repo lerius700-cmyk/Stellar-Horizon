@@ -821,21 +821,30 @@ class GameplayScene(Scene):
             pygame.draw.circle(halo, (*vfx.halo_color, vfx.halo_alpha),
                                (rad, rad), rad)
             surface.blit(halo, (cx - rad, cy - rad))
-        # Sprite with alpha (and optional scale).
+        # Sprite with alpha (and optional scale). If the sprite is a sheet
+        # (width > single-frame width), extract the current frame.
+        frame = getattr(b, "frame", 0)
+        if sprite.get_width() > 32 and sprite.get_width() % 4 == 0:
+            # Looks like a 4-frame sheet; extract the current frame
+            frame_w = sprite.get_width() // 4
+            sub = sprite.subsurface(pygame.Rect(frame * frame_w, 0,
+                                               frame_w, sprite.get_height()))
+        else:
+            sub = sprite
         if vfx.scale != 1.0:
-            sw, sh = sprite.get_width(), sprite.get_height()
+            sw, sh = sub.get_width(), sub.get_height()
             nw, nh = max(1, int(round(sw * vfx.scale))), \
                      max(1, int(round(sh * vfx.scale)))
-            scaled = pygame.transform.scale(sprite, (nw, nh))
+            scaled = pygame.transform.scale(sub, (nw, nh))
             rect = scaled.get_rect(center=(cx, cy))
             if vfx.alpha < 255:
                 scaled.set_alpha(vfx.alpha)
             surface.blit(scaled, rect)
         else:
-            rect = sprite.get_rect(center=(cx, cy))
+            rect = sub.get_rect(center=(cx, cy))
             if vfx.alpha < 255:
-                sprite.set_alpha(vfx.alpha)
-            surface.blit(sprite, rect)
+                sub.set_alpha(vfx.alpha)
+            surface.blit(sub, rect)
 
     def _draw_enemy_bullet_sprite(self, surface, b, ox, oy) -> None:
         # Bomber gravity bombs get a distinct look: a dark red filled

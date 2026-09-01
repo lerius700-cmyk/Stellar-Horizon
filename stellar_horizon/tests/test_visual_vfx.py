@@ -305,3 +305,33 @@ def test_wave_manager_emits_chain_spawn_glow_per_link():
         # The chain has 3 links; begin() should have emitted 3 chain glows.
         active = [p for p in wm.fx.particles if p.active]
         assert len(active) > 0, f"chain should emit glow particles per link, got {len(active)}"
+
+
+# --- Bullet sprite sheet animation tests ---
+
+def test_player_bullet_advances_frame_in_update():
+    from stellar_horizon.entities.bullet import PlayerBullet
+    b = PlayerBullet()
+    b.x, b.y = 100.0, 100.0
+    b.vx, b.vy = 100.0, 0.0
+    b.alive = True
+    initial_frame = b.frame
+    for _ in range(60):
+        b.update(1 / 60)
+    assert b.frame != initial_frame, (
+        f"bullet frame should advance over time, was {initial_frame}, now {b.frame}"
+    )
+
+
+def test_enemy_bullet_advances_frame_in_update():
+    from stellar_horizon.entities.bullet import EnemyBullet
+    b = EnemyBullet()
+    b.x, b.y = 100.0, 100.0
+    b.vx, b.vy = -100.0, 0.0
+    b.alive = True
+    initial_frame = b.frame
+    for _ in range(60):
+        b.update(1 / 60)
+    assert b.frame != initial_frame, (
+        f"enemy bullet frame should advance, was {initial_frame}, now {b.frame}"
+    )
