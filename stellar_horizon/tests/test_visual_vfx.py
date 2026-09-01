@@ -139,3 +139,59 @@ def test_all_enemy_kinds_call_explosion_on_death():
         e.take_damage(1)
         alive = [p for p in fx.particles if p.active]
         assert len(alive) > 0, f"{kind} death should emit explosion particles"
+
+
+# --- Engine flame tests ---
+
+def test_engine_flame_constructs_with_color():
+    from stellar_horizon.fx.engine_flames import EngineFlame
+    flame = EngineFlame(base_color=(255, 100, 100))
+    assert flame is not None
+    assert flame.base_color == (255, 100, 100)
+
+
+def test_engine_flame_update_advances_frame():
+    from stellar_horizon.fx.engine_flames import EngineFlame
+    flame = EngineFlame(base_color=(255, 100, 100))
+    initial_frame = flame._frame
+    # Update enough to advance one frame (1/12 s = 0.0833s)
+    flame.update(0.1)
+    assert flame._frame != initial_frame, (
+        f"frame should advance after update (was {initial_frame}, now {flame._frame})"
+    )
+
+
+def test_engine_flame_renders_without_error():
+    import pygame
+    pygame.init()
+    try:
+        from stellar_horizon.fx.engine_flames import EngineFlame
+        flame = EngineFlame(base_color=(255, 100, 100))
+        surf = pygame.Surface((20, 20))
+        flame.render(surf, 10.0, 10.0, size_scale=1.0)
+    finally:
+        pygame.quit()
+
+
+def test_engine_flame_size_scales_with_size_scale():
+    """A larger size_scale should produce more visible pixels."""
+    import pygame
+    pygame.init()
+    try:
+        from stellar_horizon.fx.engine_flames import EngineFlame
+        flame = EngineFlame(base_color=(255, 100, 100))
+        small = pygame.Surface((20, 20), pygame.SRCALPHA)
+        large = pygame.Surface((60, 60), pygame.SRCALPHA)
+        flame.render(small, 10.0, 10.0, size_scale=0.5)
+        flame.render(large, 30.0, 30.0, size_scale=2.0)
+        small_pixels = sum(1 for x in range(small.get_width())
+                           for y in range(small.get_height())
+                           if small.get_at((x, y))[3] > 0)
+        large_pixels = sum(1 for x in range(large.get_width())
+                           for y in range(large.get_height())
+                           if large.get_at((x, y))[3] > 0)
+        assert large_pixels > small_pixels, (
+            f"larger scale should produce more pixels: small={small_pixels}, large={large_pixels}"
+        )
+    finally:
+        pygame.quit()
