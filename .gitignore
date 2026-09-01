@@ -11,10 +11,15 @@ htmlcov/
 
 # Distribution / build
 build/
+build_fresh/
 dist/
+dist_fresh/
 releases/
 *.spec
 *.manifest
+
+# Release artifacts (zips go to GitHub Releases, never the repo)
+*-win64.zip
 
 # IDE
 .idea/
@@ -30,6 +35,12 @@ __recover_*/
 *.tmp
 *.bak
 
+# Agent working data (superpowers skill)
+.superpowers/
+
+# One-shot refactor scripts (kept out of the repo, rerun on demand)
+tools/_*.py
+
 # Project-specific
 stellar_horizon/tools/playtest_out/
 stellar_horizon/assets/sprites/.wip/
@@ -38,3 +49,10 @@ logs/
 crash.log
 stellar_horizon_crash.log
 *.log
+
+# Refactor regression guards (cleaned in 2026-09-01 SF+SM refactor).
+# These must NOT come back: assets/ at root was a phantom duplicate,
+# and _vendor/ inside the package was dead code (everything was in
+# stellar_horizon/_systems/).
+/assets/
+/stellar_horizon/_vendor/
