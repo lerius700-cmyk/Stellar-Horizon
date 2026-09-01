@@ -506,7 +506,8 @@ class GameplayScene(Scene):
                 len(self.wave_manager.waves) if self.wave_manager else 0,
             )
         # State transitions
-        if not self.player.alive:
+        # Wait for player death sequence (1.5s of VFX) before showing game over
+        if self.player.dead:
             from stellar_horizon.scenes.game_over import GameOverScene
             self._next = GameOverScene(self.midi_player, score=self.score)
         elif self.boss_active and self.boss and self.boss.phase == "dead":

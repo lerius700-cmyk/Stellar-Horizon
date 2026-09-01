@@ -62,6 +62,11 @@ class Player:
         # VFX (visual polish)
         "flame",  # EngineFlame
         "fx",     # FxLayer reference for trail emission
+        # Hit/death sequence (visual polish)
+        "hit_flash",    # seconds remaining of red flash
+        "dying",        # bool - in death animation
+        "dying_time",   # seconds elapsed in death sequence
+        "dead",         # bool - death animation complete
     )
 
     def __init__(self, screen_rect: pygame.Rect) -> None:
@@ -91,6 +96,11 @@ class Player:
         # VFX (visual polish)
         self.flame = EngineFlame(base_color=(100, 200, 255))  # cyan
         self.fx = None  # FxLayer injected by GameplayScene on_enter
+        # Hit/death sequence state
+        self.hit_flash: float = 0.0
+        self.dying: bool = False
+        self.dying_time: float = 0.0
+        self.dead: bool = False
 
     def set_weapon(self, weapon: int) -> None:
         """Switch to a new weapon (0..9). No-op if already on it."""
@@ -98,6 +108,12 @@ class Player:
             self.weapon = weapon
 
     def update(self, dt: float, keys, bullets_pool, now: float = 0.0) -> None:
+        if self.dying:
+            # Death sequence: tick timer, skip all normal logic
+            self.dying_time += dt
+            if self.dying_time >= 1.5:
+                self.dead = True
+            return
         if not self.alive:
             return
         # Cache the scene time so _spawn_bullet can stamp the bullet
@@ -137,8 +153,10 @@ class Player:
             self.shoot_cooldown = self.WEAPON_COOLDOWN_S[self.weapon]
         if self.invulnerable_frames > 0:
             self.invulnerable_frames -= 1
+        if self.hit_flash > 0:
+            self.hit_flash = max(0.0, self.hit_flash - dt)
         # --- Visual polish: trail particles when thrusting ---
-        if self.fx is not None and self.thrusting:
+        if self.alive and self.fx is not None and self.thrusting:
             self.fx.emit_trail(self.x - 6, self.y, (100, 200, 255), intensity=0.7)
 
     def take_hit(self, amount: int = 1) -> None:
@@ -149,14 +167,24 @@ class Player:
         kamikaze contact is 2 (already handled by the caller calling
         take_hit() once per damage point).
         """
-        if not self.alive or self.invulnerable_frames > 0:
+        if not self.alive or self.invulnerable_frames > 0 or self.dying:
             return
         self.lives -= amount
+        self.hit_flash = 0.3  # visual hit feedback
         if self.lives <= 0:
             self.lives = 0
+            # Start death sequence: alive=False but `dying=True` keeps update
+            # running for the death animation. The GameplayScene waits
+            # for `dead=True` before transitioning to game-over.
             self.alive = False
+            self.dying = True
+            self.dying_time = 0.0
+            if self.fx is not None:
+                self.fx.emit_player_death(self.x, self.y)
         else:
             self.invulnerable_frames = self.INVULN_FRAMES_PER_HIT
+            if self.fx is not None:
+                self.fx.emit_player_hit(self.x, self.y)
 
     def heal(self, amount: int) -> int:
         """Restore up to `amount` lives, capped at max_lives.

@@ -335,3 +335,102 @@ def test_enemy_bullet_advances_frame_in_update():
     assert b.frame != initial_frame, (
         f"enemy bullet frame should advance, was {initial_frame}, now {b.frame}"
     )
+
+
+# --- Player hit / death sequence tests (Task 8) ---
+
+def test_player_takes_damage_decrements_hp():
+    """A non-fatal hit should decrement lives and set hit_flash."""
+    import pygame
+    pygame.init()
+    try:
+        from stellar_horizon.entities.player import Player
+        screen_rect = pygame.Rect(0, 0, 480, 270)
+        p = Player(screen_rect)
+        assert p.lives == p.MAX_LIVES
+        p.take_hit(1)
+        assert p.lives == p.MAX_LIVES - 1, (
+            f"lives should be {p.MAX_LIVES - 1} after 1 damage, got {p.lives}"
+        )
+        assert p.hit_flash > 0.0, f"hit_flash should be set, got {p.hit_flash}"
+        assert p.alive is True, "non-fatal hit should leave player alive"
+        assert p.dying is False, "non-fatal hit should not start death sequence"
+    finally:
+        pygame.quit()
+
+
+def test_player_taking_fatal_damage_starts_death_sequence():
+    """A hit that drops lives to 0 should start the death sequence
+    and emit the death VFX via the injected FxLayer."""
+    import pygame
+    pygame.init()
+    try:
+        from stellar_horizon.entities.player import Player
+        screen_rect = pygame.Rect(0, 0, 480, 270)
+        p = Player(screen_rect)
+        fx = FxLayer(pool_size=512)
+        p.fx = fx
+        p.lives = 1  # one hit away from death
+        p.take_hit(1)
+        assert p.lives == 0, f"lives should be 0 after fatal hit, got {p.lives}"
+        assert p.alive is False, "fatal hit should mark player not alive"
+        assert p.dying is True, "fatal hit should set dying=True"
+        assert p.dead is False, "dying animation should not be done yet"
+        # Death VFX should have been emitted.
+        active = [pp for pp in fx.particles if pp.active]
+        assert len(active) > 0, (
+            f"fatal hit should emit death particles, got {len(active)}"
+        )
+        # Tick the death sequence past 1.5s — dead should flip to True.
+        for _ in range(100):  # 100 * 1/60 = 1.67s
+            p.update(1 / 60, {}, [])
+        assert p.dead is True, "death sequence should mark dead=True after 1.5s"
+    finally:
+        pygame.quit()
+
+
+def test_player_hit_emits_particles_via_fx():
+    """A non-fatal hit should emit hit particles via the injected FxLayer."""
+    import pygame
+    pygame.init()
+    try:
+        from stellar_horizon.entities.player import Player
+        screen_rect = pygame.Rect(0, 0, 480, 270)
+        p = Player(screen_rect)
+        fx = FxLayer(pool_size=128)
+        p.fx = fx
+        p.take_hit(1)  # non-fatal: 3 -> 2
+        active = [pp for pp in fx.particles if pp.active]
+        assert len(active) > 0, (
+            f"non-fatal hit should emit particles, got {len(active)}"
+        )
+    finally:
+        pygame.quit()
+
+
+def test_player_take_hit_ignored_while_dying():
+    """Once the death sequence is in progress, additional hits must
+    be ignored so a screen-clearing boss attack doesn't spam particles."""
+    import pygame
+    pygame.init()
+    try:
+        from stellar_horizon.entities.player import Player
+        screen_rect = pygame.Rect(0, 0, 480, 270)
+        p = Player(screen_rect)
+        fx = FxLayer(pool_size=512)
+        p.fx = fx
+        p.lives = 1
+        p.take_hit(1)  # fatal — starts death
+        first_count = len([pp for pp in fx.particles if pp.active])
+        # Clear, then try a second hit during the death sequence.
+        for pp in fx.particles:
+            pp.active = False
+        p.take_hit(1)
+        second_count = len([pp for pp in fx.particles if pp.active])
+        assert second_count == 0, (
+            f"hit during death sequence should be ignored, got {second_count} particles"
+        )
+        # dying is still True from the first hit; first_count was > 0.
+        assert first_count > 0
+    finally:
+        pygame.quit()
