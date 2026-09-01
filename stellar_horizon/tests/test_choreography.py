@@ -36,7 +36,7 @@ SIM_FRAMES = 1500  # 12.5 seconds at 120 FPS (long enough for the new path shape
 
 def _simulate_path(path, frames: int = SIM_FRAMES, dt: float = SIM_DT) -> list[tuple[float, float]]:
     """Step a Path through `frames` ticks of `dt` seconds. Return list of (x, y)."""
-    from src.movement import PathFollower, HybridPath
+    from stellar_horizon._systems.movement import PathFollower, HybridPath
     if isinstance(path, HybridPath):
         follower = PathFollower(path)
     else:
@@ -274,7 +274,7 @@ def test_formation_builders_dynamic_have_update():
 
 def test_path_builder_returns_path_object():
     from stellar_horizon.waves.wave_manager import _PATH_BUILDERS
-    from src.movement import BezierPath, HybridPath
+    from stellar_horizon._systems.movement import BezierPath, HybridPath
     path = _PATH_BUILDERS["sine_bend"]({})
     assert isinstance(path, (BezierPath, HybridPath)), (
         f"sine_bend did not return BezierPath or HybridPath, got {type(path)}"

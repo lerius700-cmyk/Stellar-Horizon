@@ -221,7 +221,7 @@ def test_enemy_engine_flame_color_matches_kind():
 def test_enemy_emits_trail_particles_when_moving():
     """A moving enemy should emit trail particles via update()."""
     from stellar_horizon.entities.enemy import Enemy
-    from src.movement import BezierPath, HybridPath, PathFollower, Point
+    from stellar_horizon._systems.movement import BezierPath, HybridPath, PathFollower, Point
 
     fx = FxLayer(pool_size=64)
     e = Enemy()
