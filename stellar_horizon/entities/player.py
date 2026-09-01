@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import pygame
 
+from stellar_horizon.fx.engine_flames import EngineFlame
+
 
 class Player:
     SPEED = 165.0
@@ -57,6 +59,9 @@ class Player:
         "invulnerable_frames", "alive", "firing", "thrusting", "bullets",
         "weapon", "_now",
         "gold_stacks", "gold_rings_collected",
+        # VFX (visual polish)
+        "flame",  # EngineFlame
+        "fx",     # FxLayer reference for trail emission
     )
 
     def __init__(self, screen_rect: pygame.Rect) -> None:
@@ -83,6 +88,9 @@ class Player:
         # `gold_stacks` is the derived count (0, 1, or 2).
         self.gold_rings_collected: int = 0
         self.gold_stacks: int = 0
+        # VFX (visual polish)
+        self.flame = EngineFlame(base_color=(100, 200, 255))  # cyan
+        self.fx = None  # FxLayer injected by GameplayScene on_enter
 
     def set_weapon(self, weapon: int) -> None:
         """Switch to a new weapon (0..9). No-op if already on it."""
@@ -129,6 +137,9 @@ class Player:
             self.shoot_cooldown = self.WEAPON_COOLDOWN_S[self.weapon]
         if self.invulnerable_frames > 0:
             self.invulnerable_frames -= 1
+        # --- Visual polish: trail particles when thrusting ---
+        if self.fx is not None and self.thrusting:
+            self.fx.emit_trail(self.x - 6, self.y, (100, 200, 255), intensity=0.7)
 
     def take_hit(self, amount: int = 1) -> None:
         """Apply `amount` damage from a single hit.

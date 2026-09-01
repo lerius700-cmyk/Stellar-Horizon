@@ -307,6 +307,8 @@ class GameplayScene(Scene):
     def update(self, dt: float, events: list) -> None:
         self._last_dt = dt
         self._keys = pygame.key.get_pressed()
+        # Inject FxLayer into player so it can emit its own trail
+        self.player.fx = self.fx
         self.player.firing = self._keys[pygame.K_SPACE]
         # Advance the scene clock FIRST so any bullets spawned this
         # frame get a spawn_time that's already past `self._elapsed`
@@ -566,6 +568,12 @@ class GameplayScene(Scene):
             self._draw_boss_sprite(surface, self.boss, ox, oy)
         if self.player.alive:
             self._draw_player_sprite(surface, self.player, ox, oy)
+            # Player engine flame: anchored at back, sized by speed
+            if self.player.flame is not None:
+                self.player.flame.update(self._last_dt)
+                size_scale = 1.0 + min(2.0, abs(self.player.vx) / 200.0)
+                self.player.flame.render(surface, self.player.x - 6, self.player.y,
+                                          size_scale=size_scale)
         for b in self.player_bullets:
             if b.alive:
                 self._draw_player_bullet_sprite(surface, b, ox, oy)

@@ -240,3 +240,36 @@ def test_enemy_emits_trail_particles_when_moving():
         e.update(1 / 60, player=None)
     active = [p for p in fx.particles if p.active]
     assert len(active) > 0, f"moving enemy should emit trail particles, got {len(active)}"
+
+
+# --- Player engine flame + trail tests ---
+
+def test_player_has_engine_flame():
+    from stellar_horizon.entities.player import Player
+    import pygame
+    pygame.init()
+    try:
+        screen_rect = pygame.Rect(0, 0, 480, 270)
+        p = Player(screen_rect)
+        assert p.flame is not None, "Player should have an EngineFlame"
+    finally:
+        pygame.quit()
+
+
+def test_player_emits_trail_particles_when_thrusting():
+    from stellar_horizon.entities.player import Player
+    import pygame
+    pygame.init()
+    try:
+        screen_rect = pygame.Rect(0, 0, 480, 270)
+        p = Player(screen_rect)
+        fx = FxLayer(pool_size=64)
+        p.fx = fx
+        # Press RIGHT to make the player actually thrust
+        keys = {pygame.K_d: True}
+        for _ in range(30):
+            p.update(1 / 60, keys, [])
+        active = [pp for pp in fx.particles if pp.active]
+        assert len(active) > 0, f"player should emit trail when thrusting, got {len(active)}"
+    finally:
+        pygame.quit()
