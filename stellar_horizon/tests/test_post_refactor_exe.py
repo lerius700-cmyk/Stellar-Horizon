@@ -1,16 +1,16 @@
-"""Post-SF+SM-refactor executable verification.
+"""Post-SF+SM-refactor executable + PyInstaller spec verification.
 
-These tests boot the actual game (or the built .exe if present) and
-verify it runs without immediate crash. This catches:
+Two test groups:
 
-- Path resolution bugs (would FileNotFoundError on first frame)
-- Import errors not caught by pytest (mixer init, display init)
-- Display/window creation failures
-- Audio init failures
+1. **Runtime**: main.py + the built .exe boot without immediate crash.
+2. **Build system**: the PyInstaller spec bundles every directory
+   the runtime loads data from. Regression guard for the 2026-09-02
+   FileNotFoundError on SPACE press (waves_act1.json was not bundled).
 """
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import time
@@ -20,11 +20,53 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[2]
+SPEC = ROOT / "StellarHorizon.spec"
 MAIN_PY = ROOT / "main.py"
 EXE = ROOT / "dist" / "StellarHorizon.exe"
 
 
-# --- main.py validation ---
+# --- Build system: PyInstaller spec regression guards ---
+
+# Directories the .exe must bundle. Add to this list when introducing
+# new runtime-loaded data.
+REQUIRED_DATA_DIRS = (
+    "stellar_horizon/assets",
+    "stellar_horizon/waves",
+    "stellar_horizon/settings.py",
+)
+
+
+def test_spec_file_exists() -> None:
+    assert SPEC.exists(), f"PyInstaller spec missing: {SPEC}"
+
+
+@pytest.mark.parametrize("required_dir", list(REQUIRED_DATA_DIRS))
+def test_spec_bundles_required_directory(required_dir: str) -> None:
+    """Each runtime-loaded directory must appear in spec datas=.
+    Regression guard for the 2026-09-02 FileNotFoundError on SPACE."""
+    text = SPEC.read_text(encoding="utf-8-sig")
+    pattern = re.compile(rf"['\"]" + re.escape(required_dir) + r"['\"]")
+    assert pattern.search(text), (
+        f"StellarHorizon.spec is missing '{required_dir}' in datas=. "
+        f"Add ('{required_dir}', '{required_dir}') to the datas list."
+    )
+
+
+def test_spec_assets_directory_exists_on_disk() -> None:
+    for d in REQUIRED_DATA_DIRS:
+        if d.endswith(".py"):
+            assert (ROOT / d).is_file(), f"Source missing: {d}"
+        else:
+            assert (ROOT / d).is_dir(), f"Source missing: {d}"
+
+
+def test_wave_json_exists_for_bundling() -> None:
+    """The specific file that broke the 2026-09-02 release."""
+    p = ROOT / "stellar_horizon" / "waves" / "waves_act1.json"
+    assert p.is_file(), f"{p} is required by the runtime; spec must bundle stellar_horizon/waves/"
+
+
+# --- Runtime: main.py validation ---
 
 def test_main_py_check_exits_zero() -> None:
     """`python main.py --check` validates imports + settings. Exit 0
@@ -48,8 +90,7 @@ def test_main_py_check_exits_zero() -> None:
 
 def test_main_py_runs_full_loop_for_3_seconds() -> None:
     """`python main.py --duration 3` actually boots the game, runs the
-    main loop, and exits cleanly. Catches errors that only show up at
-    runtime (e.g., display init, mixer init, scene on_enter side effects)."""
+    main loop, and exits cleanly."""
     env = os.environ.copy()
     env.setdefault("SDL_VIDEODRIVER", "dummy")
     env.setdefault("SDL_AUDIODRIVER", "dummy")
@@ -57,22 +98,18 @@ def test_main_py_runs_full_loop_for_3_seconds() -> None:
         [sys.executable, str(MAIN_PY), "--duration", "3"],
         capture_output=True, text=True, timeout=15, env=env,
     )
-    # Auto-exit returns 0 on success; what matters is no exception traceback.
     assert "Traceback" not in result.stderr, (
         f"main.py --duration 3 raised an exception:\n{result.stderr}"
     )
 
 
-# --- Built .exe verification (only if .exe exists) ---
+# --- Runtime: built .exe verification ---
 
 @pytest.mark.skipif(not EXE.exists(), reason="dist/StellarHorizon.exe not built")
 def test_built_exe_starts_and_stays_alive() -> None:
     """Boot the .exe. If it imports OK and the scene wires up, the
     process stays alive. If something crashes (path bug, import error,
-    display init), the process exits within ~1s.
-
-    We wait 2s, then check the process is still running. If it is,
-    the .exe is healthy. We then force-kill it via taskkill."""
+    display init), the process exits within ~1s."""
     env = {**os.environ, "SDL_VIDEODRIVER": "dummy", "SDL_AUDIODRIVER": "dummy"}
     proc = subprocess.Popen(
         [str(EXE)],
@@ -80,7 +117,6 @@ def test_built_exe_starts_and_stays_alive() -> None:
     )
     try:
         time.sleep(2.0)
-        # If the process died, the .exe is broken.
         poll = proc.poll()
         if poll is not None:
             stdout, stderr = proc.communicate()
@@ -90,7 +126,6 @@ def test_built_exe_starts_and_stays_alive() -> None:
                 f"STDERR: {stderr.decode('utf-8', errors='replace')}"
             )
     finally:
-        # Force-kill via taskkill (more reliable on Windows than proc.kill).
         if proc.poll() is None:
             subprocess.run(
                 ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
