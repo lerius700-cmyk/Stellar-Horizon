@@ -1,11 +1,17 @@
-"""Headless end-to-end playthrough.
+"""Headless end-to-end playthrough — v2 with REAL input.
 
-Runs the full Stellar Horizon game loop without opening a visible
-window. Simulates player input via pygame.event.post() and reports
-any exception that would have crashed the .exe.
+v1 was bogus: it posted events to the pygame queue but Player.update
+reads the key state via pygame.key.get_pressed(), not the event queue.
+The player never actually moved or shot, died immediately, and the
+test sat on the game over screen for 200s. 23,283 meaningless ticks.
 
-The user can't accidentally close this (no window = nothing to close).
-Captures all exceptions, not just stderr.
+v2 monkey-patches:
+1. pygame.key.get_pressed() to return a fake state (SPACE + cyclic WASD)
+2. Player.take_hit() to be a no-op (so the player survives and the
+   waves actually progress)
+
+This makes the level ACTUALLY exercise: waves spawn, enemies fire,
+boss spawns, boss attacks, boss takes damage.
 """
 from __future__ import annotations
 
@@ -29,23 +35,81 @@ from stellar_horizon.core.game import Game  # noqa: E402
 from stellar_horizon.settings import FPS_TARGET  # noqa: E402
 
 
-def make_key_event(key: int, unicode: str = " ") -> pygame.event.Event:
-    return pygame.event.Event(
-        pygame.KEYDOWN,
-        {"key": key, "mod": 0, "unicode": unicode, "scancode": 0, "window": None},
-    )
+# ---------------------------------------------------------------------------
+# Patches
+# ---------------------------------------------------------------------------
 
+class FakeKeys:
+    """Acts like pygame's ScancodeWrapper: keys[K_SPACE] returns True/False."""
+    def __init__(self) -> None:
+        self._state: dict[int, bool] = {}
+
+    def set(self, key: int, pressed: bool) -> None:
+        self._state[key] = pressed
+
+    def __getitem__(self, key: int) -> bool:
+        return self._state.get(key, False)
+
+    def __setitem__(self, key: int, value: bool) -> None:
+        self._state[key] = value
+
+
+_FAKE_KEYS = FakeKeys()
+_cycle = ["w", "a", "s", "d"]
+_cycle_idx = [0]
+_last_move = [0.0]
+
+
+def fake_get_pressed() -> FakeKeys:
+    """Return a FakeKeys whose state changes over time to simulate
+    SPACE held + WASD cycling every 1.2s. Called by the game each frame
+    to read movement/shooting state."""
+    now = time.perf_counter()
+    # Always hold SPACE (shoot).
+    _FAKE_KEYS[pygame.K_SPACE] = True
+    # Move direction changes every 1.2s.
+    if (now - _last_move[0]) > 1.2:
+        d = _cycle[_cycle_idx[0] % 4]
+        keymap = {"w": pygame.K_w, "a": pygame.K_a, "s": pygame.K_s, "d": pygame.K_d}
+        for k in (pygame.K_w, pygame.K_a, pygame.K_s, pygame.K_d):
+            _FAKE_KEYS[k] = False
+        _FAKE_KEYS[keymap[d]] = True
+        _cycle_idx[0] += 1
+        _last_move[0] = now
+    return _FAKE_KEYS
+
+
+def install_patches() -> None:
+    """Patch pygame.key.get_pressed + Player.take_hit BEFORE Game()
+    is constructed."""
+    # Patch pygame's key state reader.
+    pygame.key.get_pressed = fake_get_pressed  # type: ignore[assignment]
+
+    # Patch Player.take_hit to be a no-op so the player survives and
+    # the level plays out. This is the test-only "invincibility" mode.
+    from stellar_horizon.entities.player import Player
+
+    def _invincible_take_hit(self, amount: int = 1) -> None:  # type: ignore[no-redef]
+        return  # no-op for headless test
+
+    Player.take_hit = _invincible_take_hit  # type: ignore[assignment]
+
+
+# ---------------------------------------------------------------------------
+# Main driver
+# ---------------------------------------------------------------------------
 
 def main(duration_s: float = 200.0) -> int:
-    """Run the game headless for `duration_s` seconds, simulating
-    a player who shoots constantly and moves in a cycle.
-    Returns 0 on success, 1 on crash, 2 on setup failure."""
-    print(f"=== Headless playthrough for {duration_s}s (full Act 1 + boss) ===")
+    print(f"=== Headless playthrough v2 for {duration_s}s ===")
+    print("Patches applied: SPACE always held, WASD cycling, player invincible")
+    print("Goal: ACTUALLY exercise waves + boss (not just sit on game over)")
 
     wave_json = ROOT / "stellar_horizon" / "waves" / "waves_act1.json"
     if not wave_json.exists():
         print(f"FATAL: wave JSON not found: {wave_json}")
         return 2
+
+    install_patches()
 
     pygame.init()
     pygame.mixer.init()
@@ -56,7 +120,7 @@ def main(duration_s: float = 200.0) -> int:
         traceback.print_exc()
         return 1
 
-    # Skip the title menu and force the gameplay scene.
+    # Skip the title menu; force the gameplay scene.
     from stellar_horizon.scenes.gameplay import GameplayScene
     g.scenes.current = GameplayScene(
         g.midi_player, g.wave_json, g.assets_dir,
@@ -66,36 +130,35 @@ def main(duration_s: float = 200.0) -> int:
 
     start = time.perf_counter()
     tick = 0
-    last_move = 0.0
-    move_idx = 0
-    moves = ["w", "a", "s", "d"]
-    key_map = {"w": pygame.K_w, "a": pygame.K_a, "s": pygame.K_s, "d": pygame.K_d}
+    boss_spawned_at: float | None = None
+    boss_killed = False
+    waves_seen: set[int] = set()
 
     while (time.perf_counter() - start) < duration_s:
         try:
-            now = time.perf_counter()
-            # Inject SPACE (shoot) every frame.
-            pygame.event.post(make_key_event(pygame.K_SPACE, " "))
-            # Inject movement every ~1.2s.
-            if (now - last_move) > 1.2:
-                d = moves[move_idx % 4]
-                pygame.event.post(make_key_event(key_map[d], d))
-                move_idx += 1
-                last_move = now
-
-            # Drive one frame. _tick_frame uses pygame.event.get() internally
-            # so our posted events will be processed.
             g._tick_frame()
             tick += 1
+            sc = g.scenes.current
 
-            # Periodic log.
-            if tick % (30 * FPS_TARGET) == 0:
+            # Log progress every 15s.
+            if tick % (15 * FPS_TARGET) == 0:
                 elapsed = int(time.perf_counter() - start)
-                sc = g.scenes.current
-                player_alive = getattr(sc, "player", None) and sc.player.alive
+                wm = getattr(sc, "wave_manager", None)
+                wave_idx = wm.current_wave_index if wm else "?"
+                if isinstance(wave_idx, int):
+                    waves_seen.add(wave_idx)
                 boss_alive = bool(getattr(sc, "boss", None) and sc.boss and sc.boss.alive)
-                wave_idx = g.scenes.current.wave_manager.current_wave_index if hasattr(g.scenes.current, "wave_manager") and g.scenes.current.wave_manager else "?"
-                print(f"[{elapsed}s] tick={tick} wave={wave_idx} player_alive={player_alive} boss_alive={boss_alive}")
+                boss_hp = sc.boss.hp if (getattr(sc, "boss", None) and sc.boss) else None
+                if boss_alive and boss_spawned_at is None:
+                    boss_spawned_at = time.perf_counter() - start
+                print(f"[{elapsed}s] tick={tick} wave={wave_idx} waves_seen={sorted(waves_seen)} "
+                      f"boss_alive={boss_alive} boss_hp={boss_hp} player_alive={getattr(sc, 'player', None) and sc.player.alive}")
+
+            # Check if boss was killed (transitioned away from gameplay or boss is dead).
+            boss = getattr(sc, "boss", None)
+            if boss is not None and not boss.alive and boss_spawned_at is not None and not boss_killed:
+                boss_killed = True
+                print(f"BOSS KILLED at {int(time.perf_counter() - start)}s!")
         except Exception as e:
             elapsed = int(time.perf_counter() - start)
             print(f"CRASH at {elapsed}s tick {tick}: {type(e).__name__}: {e}")
@@ -104,7 +167,16 @@ def main(duration_s: float = 200.0) -> int:
 
     elapsed = int(time.perf_counter() - start)
     print(f"=== Fin tras {elapsed}s (tick={tick}) ===")
-    print("Sin crashes. Engine solido para duracion completa del nivel.")
+    print(f"Waves actually exercised: {sorted(waves_seen)}")
+    print(f"Boss spawned: {boss_spawned_at is not None} (at t={boss_spawned_at}s)")
+    print(f"Boss killed: {boss_killed}")
+    if not waves_seen:
+        print("FAIL: no waves were actually played (engine sat on game over)")
+        return 1
+    if boss_spawned_at is None:
+        print("FAIL: boss never spawned (level didn't progress through waves)")
+        return 1
+    print("PASS: engine actually exercised waves + boss")
     return 0
 
 
