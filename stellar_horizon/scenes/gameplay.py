@@ -122,6 +122,11 @@ class GameplayScene(Scene):
         # drive code-driven VFX (bullet pulses, halo phase) so they
         # stay in sync with the rest of the scene.
         self._elapsed: float = 0.0
+        # Last frame delta-time, used by draw() to advance the
+        # engine flames. Initialized here (not in update()) so the
+        # first draw() on the title→gameplay transition frame doesn't
+        # AttributeError before update() has run.
+        self._last_dt: float = 0.0
 
     def on_enter(self) -> None:
         # Load sprites FIRST so the wave manager can pick variants
