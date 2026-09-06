@@ -13,6 +13,7 @@ special pool (gravity bombs) or apply special contact damage.
 from __future__ import annotations
 
 import math
+from collections import deque
 
 import pygame
 from stellar_horizon._systems.movement import PathFollower
@@ -77,6 +78,7 @@ class Enemy:
         "fx",               # FxLayer reference for particle emission
         "flame",            # EngineFlame instance
         "trail_intensity",  # 0..1, how much trail to emit
+        "_trail",           # deque[(x, y)] of recent positions for the comet-tail light trail
     )
 
     def __init__(self) -> None:
@@ -94,6 +96,10 @@ class Enemy:
         self.path_follower: PathFollower | None = None
         self.slot_dx: float = 0.0
         self.slot_dy: float = 0.0
+        # Comet-tail light trail (deque of recent positions). Initialized
+        # in __init__ (not on_spawn) so tests that construct an Enemy
+        # without calling on_spawn still have a valid trail buffer.
+        self._trail: deque = deque(maxlen=15)
         self.path_done: bool = False
         self.bomb_timer: float = 0.0
         self.ufo_phase: float = 0.0
@@ -206,6 +212,12 @@ class Enemy:
                 flame_color = self.flame.base_color if self.flame else (255, 200, 100)
                 self.fx.emit_trail(self.x + ax, self.y + ay, flame_color,
                                    intensity=self.trail_intensity)
+
+        # --- Visual polish: comet-tail light trail ---
+        # Record current position for the afterimage trail. The draw
+        # code reads e._trail to render alpha-faded glows along the
+        # recent path.
+        self._trail.append((self.x, self.y))
 
         if self.x < -32 or self.y < -32 or self.y > 302:
             self.alive = False

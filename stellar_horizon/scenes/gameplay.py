@@ -564,12 +564,17 @@ class GameplayScene(Scene):
         if self.wave_manager:
             for e in self.wave_manager.spawned_enemies:
                 if e.alive:
+                    # --- Light trail (comet tail) drawn BEFORE the sprite
+                    # so the ship sits on top of the trail, not the other way.
+                    # Each trail position becomes a small alpha-faded glow.
+                    self._draw_enemy_trail(surface, e, ox, oy)
                     self._draw_enemy_sprite(surface, e, ox, oy)
                     # Engine flame: anchored at the back of the ship, sized by speed
                     if e.flame is not None:
                         e.flame.update(self._last_dt)
                         speed = math.hypot(e.vx, e.vy)
-                        size_scale = 1.0 + min(2.0, speed / 100.0)
+                        # Reduced 2026-09-06: was 1.0 + min(2.0, speed/100), max 3.0 (~24px flame, bigger than ship)
+                        size_scale = 0.5 + min(1.0, speed / 150.0)  # max 1.5 (~7.5px flame, half ship)
                         e.flame.render(surface, e.x + 6, e.y, size_scale=size_scale)
         if self.boss_active and self.boss and self.boss.alive:
             self._draw_boss_sprite(surface, self.boss, ox, oy)
@@ -578,7 +583,8 @@ class GameplayScene(Scene):
             # Player engine flame: anchored at back, sized by speed
             if self.player.flame is not None:
                 self.player.flame.update(self._last_dt)
-                size_scale = 1.0 + min(2.0, abs(self.player.vx) / 200.0)
+                # Reduced 2026-09-06: was 1.0 + min(2.0, |vx|/200), max 1.83 (~15px flame, comparable to ship)
+                size_scale = 0.5 + min(0.5, abs(self.player.vx) / 300.0)  # max 1.0 (~5px flame, ~1/3 ship)
                 self.player.flame.render(surface, self.player.x - 6, self.player.y,
                                           size_scale=size_scale)
         for b in self.player_bullets:
@@ -657,6 +663,34 @@ class GameplayScene(Scene):
             return
         self._blit_centered(surface, sprite.get_current_surface(),
                             p.x + ox, p.y + oy)
+
+    def _draw_enemy_trail(self, surface, e, ox, oy) -> None:
+        """Render the enemy ship's comet-tail light trail.
+
+        Each entry in e._trail is a past (x, y) position. We draw a
+        small alpha-faded circle at each one, using the engine flame
+        color so the trail reads as the ship's wake. The newest entry
+        (current position) is skipped — that's drawn by the sprite
+        itself. Older entries fade to 0 alpha, giving a smooth tail.
+        """
+        trail = getattr(e, "_trail", None)
+        if not trail or len(trail) < 2:
+            return  # not enough history to draw a trail
+        color = e.flame.base_color if e.flame else (255, 200, 100)
+        n = len(trail)
+        # Walk oldest -> newest-1 (skip the last/current entry).
+        for i, (tx, ty) in enumerate(trail[:-1]):
+            # Age factor: 0 = oldest, 1 = second-newest
+            age = i / max(1, n - 1)
+            # Alpha and size: 0 (oldest, invisible) -> full (newest)
+            # Newest non-current is the second-to-last, brightest.
+            alpha = int(180 * age)
+            radius = max(1, int(4 * age))
+            if alpha <= 0:
+                continue
+            glow = pygame.Surface((radius * 2 + 2, radius * 2 + 2), pygame.SRCALPHA)
+            pygame.draw.circle(glow, (*color, alpha), (radius + 1, radius + 1), radius)
+            surface.blit(glow, (int(tx - radius - 1 + ox), int(ty - radius - 1 + oy)))
 
     def _draw_enemy_sprite(self, surface, e, ox, oy) -> None:
         # Prefer the per-spawn sprite variant (assigned by the wave

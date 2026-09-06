@@ -16,7 +16,7 @@ import pygame
 
 _FRAME_INTERVAL_S = 1.0 / 12.0  # 12 FPS animation
 _FRAME_COUNT = 4
-_BASE_SIZE = 8  # base flame size in pixels (before size_scale)
+_BASE_SIZE = 5  # base flame size in pixels (before size_scale) — reduced from 8 on 2026-09-06; flames were overshadowing the ship sprites
 
 # Per-frame size progression (relative to base). 0.6 = small, 1.0 = full.
 _FRAME_PROGRESSIONS = (0.6, 0.8, 1.0, 0.7)
