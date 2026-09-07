@@ -6,6 +6,24 @@ import math
 import pygame
 
 
+# 2026-09-06 visual polish v2: weapon id (0..9) -> laser archetype
+# (0..4). All 10 weapons map to one of 5 sprite sheets. Multiple
+# weapons can share an archetype (e.g., acid/heart/ice all share
+# the same purple-organic archetype with different VFX).
+WEAPON_ARCHETYPE: tuple[int, ...] = (
+    0,  # 0 yellow plasma   -> laser_01
+    1,  # 1 red pulse       -> laser_02
+    2,  # 2 blue ion        -> laser_03
+    3,  # 3 green acid      -> laser_04
+    4,  # 4 purple void     -> laser_05
+    4,  # 5 orange fireball -> laser_05
+    2,  # 6 white piercing  -> laser_03
+    3,  # 7 pink heart      -> laser_04
+    2,  # 8 cyan ice        -> laser_03
+    4,  # 9 rainbow streak  -> laser_05
+)
+
+
 class PlayerBullet:
     SPEED_PX_S = 480.0
     SIZE = (12, 4)
@@ -17,8 +35,14 @@ class PlayerBullet:
     # fired this bullet so the VFX knows which animation to apply.
     # `frame` and `frame_time` drive sprite-sheet animation (4-frame loop
     # at 8 FPS). Falls back to no sheet animation if the sprite is single-frame.
+    # 2026-09-06 visual polish v2: `frame_elapsed`, `frame_index` and
+    # `weapon_archetype` drive the 6-frame sheet animation at 12 fps
+    # (render code looks up the archetype's laser_NN sheet).
     __slots__ = ("x", "y", "vx", "vy", "alive", "spawn_time", "weapon",
-                 "frame", "frame_time")
+                 "frame", "frame_time",
+                 "frame_elapsed",   # seconds since spawn (drives frame_index)
+                 "frame_index",     # current sheet frame, 0..5
+                 "weapon_archetype")  # index into laser_NN sheet
 
     def __init__(self) -> None:
         self.x = self.y = self.vx = self.vy = 0.0
@@ -27,6 +51,24 @@ class PlayerBullet:
         self.weapon: int = 0
         self.frame: int = 0
         self.frame_time: float = 0.0
+        self.frame_elapsed: float = 0.0
+        self.frame_index: int = 0
+        self.weapon_archetype: int = 0
+
+    def spawn(self, x: float, y: float, vx: float, vy: float,
+              weapon: int, spawn_time: float) -> None:
+        """Activate this bullet for a new shot. Resets animation state
+        so the sprite-sheet frame_index restarts at 0 for every shot.
+        `weapon_archetype` is derived from `weapon` via WEAPON_ARCHETYPE."""
+        self.x, self.y, self.vx, self.vy = x, y, vx, vy
+        self.alive = True
+        self.spawn_time = spawn_time
+        self.weapon = weapon
+        self.weapon_archetype = (
+            WEAPON_ARCHETYPE[weapon] if 0 <= weapon < len(WEAPON_ARCHETYPE) else 0
+        )
+        self.frame_elapsed = 0.0
+        self.frame_index = 0
 
     def update(self, dt: float) -> None:
         if not self.alive:
@@ -38,6 +80,10 @@ class PlayerBullet:
         if self.frame_time >= 1.0 / 8.0:
             self.frame_time = 0.0
             self.frame = (self.frame + 1) % 4
+        # 2026-09-06 visual polish v2: cycle through 6-frame sheet
+        # at 12 fps.
+        self.frame_elapsed += dt
+        self.frame_index = int(self.frame_elapsed * 12) % 6
         if self.x > 480 + 12 or self.x < -12:
             self.alive = False
 
@@ -50,9 +96,13 @@ class EnemyBullet:
     SIZE = (8, 8)
     POOL_SIZE = 64
 
+    # 2026-09-06 visual polish v2: frame_elapsed / frame_index added
+    # for consistency with PlayerBullet (enemy bullets use their own
+    # sheet, no weapon_archetype mapping).
     __slots__ = ("x", "y", "vx", "vy", "alive", "damage",
                  "speed_mult", "_bomb", "_bomb_fuse",
-                 "frame", "frame_time")
+                 "frame", "frame_time",
+                 "frame_elapsed", "frame_index")
 
     def __init__(self) -> None:
         self.x = self.y = self.vx = self.vy = 0.0
@@ -61,6 +111,8 @@ class EnemyBullet:
         self.speed_mult: float = 1.0
         self.frame: int = 0
         self.frame_time: float = 0.0
+        self.frame_elapsed: float = 0.0
+        self.frame_index: int = 0
         self._bomb: bool = False
         self._bomb_fuse: float = 0.0
 

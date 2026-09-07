@@ -72,3 +72,54 @@ def test_enemy_bullet_despawns_off_screen():
     b.spawn(0, 100, 480, 100)
     b.update(10.0)
     assert b.alive is False
+
+
+# --- visual polish v2: bullet animation state (frame_index, weapon_archetype) ---
+
+
+def test_bullet_frame_index_advances_at_12fps():
+    # 2026-09-06 visual polish v2: bullets cycle through 6 frames
+    # at 12 fps. After 0.3 seconds of update, frame_index should
+    # be int(0.3 * 12) % 6 = 3.
+    from stellar_horizon.entities.bullet import PlayerBullet
+    b = PlayerBullet()
+    b.x = 0.0
+    b.y = 0.0
+    b.vx = 100.0
+    b.vy = 0.0
+    b.alive = True
+    for _ in range(6):
+        b.update(0.05)
+    assert b.frame_index == 3, (
+        f"frame_index should be 3 after 0.3s, got {b.frame_index}"
+    )
+
+
+def test_bullet_frame_index_wraps_after_6():
+    # 2026-09-06 visual polish v2: after 0.5s of update, frame_index
+    # should wrap: int(0.5 * 12) % 6 = 6 % 6 = 0.
+    from stellar_horizon.entities.bullet import PlayerBullet
+    b = PlayerBullet()
+    b.x = 0.0
+    b.y = 0.0
+    b.vx = 100.0
+    b.vy = 0.0
+    b.alive = True
+    b.update(0.5)
+    assert b.frame_index == 0, (
+        f"frame_index should wrap to 0 after 0.5s, got {b.frame_index}"
+    )
+
+
+def test_bullet_weapon_archetype_maps_correctly():
+    # 2026-09-06 visual polish v2: each weapon id maps to a laser
+    # archetype (0..4). Verify the WEAPON_ARCHETYPE table covers
+    # all 10 weapons and values are in range.
+    from stellar_horizon.entities.bullet import WEAPON_ARCHETYPE
+    assert len(WEAPON_ARCHETYPE) == 10, (
+        f"WEAPON_ARCHETYPE should have 10 entries, got {len(WEAPON_ARCHETYPE)}"
+    )
+    for i, archetype in enumerate(WEAPON_ARCHETYPE):
+        assert 0 <= archetype <= 4, (
+            f"weapon {i} archetype {archetype} out of range 0..4"
+        )
