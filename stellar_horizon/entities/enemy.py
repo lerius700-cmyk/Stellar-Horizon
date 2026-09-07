@@ -72,6 +72,22 @@ _ENEMY_DYING_HORIZONTAL_DRIFT = 0.35  # multiplier on vx while falling
 _ENEMY_DYING_TUMBLE_DEG_PER_S = 240.0 # visual rotation rate
 _ENEMY_DYING_OFFSCREEN_Y = 295.0      # beyond the bottom edge of the 270-tall viewport
 
+# 2026-09-06 destruction-fall polish v2: realistic tumble physics.
+# See docs/superpowers/specs/2026-09-06-destruction-fall-design.md
+#
+# NOTE: The spec asks for _ENEMY_DYING_GRAVITY_PX_S2 = 500.0 here,
+# but a value of 620.0 was already declared above (in the v1
+# destruction animation, commit 6c3316b) and is consumed by
+# update(). This task is "setup only — no behavior change",
+# so the existing 620.0 is left in place. A follow-up task will
+# migrate the gravity value to the new spec (500.0) along with
+# the rewrite of update() and take_damage() to use the new
+# exponential-drag physics.
+_ENEMY_DYING_DRAG_LINEAR = 1.8              # 1/s, exp drag on vx
+_ENEMY_DYING_DRAG_ANGULAR = 0.6             # 1/s, exp drag on omega
+_ENEMY_DYING_OMEGA_RANGE = (-180.0, 180.0)  # deg/s random initial spin
+_ENEMY_DYING_DEATH_SHEET_S = 0.15           # burst duration before ship is visible
+
 
 class Enemy:
     __slots__ = (
@@ -100,6 +116,9 @@ class Enemy:
         # distinguish "death sheet" from "IDLE/v1 sheet".
         "dying_timer",      # seconds remaining of the death animation (0 = not dying)
         "dying_rotation",   # visual tumble: degrees rotated while falling
+        "dying_omega",      # current rotation rate (deg/s), decays with drag
+        "dying_elapsed",    # seconds since take_damage triggered death
+        "_smoke_throttle",  # frame counter for throttled smoke emission
     )
 
     def __init__(self) -> None:
@@ -133,6 +152,9 @@ class Enemy:
         self.trail_intensity: float = 0.0
         self.dying_timer: float = 0.0
         self.dying_rotation: float = 0.0
+        self.dying_omega: float = 0.0
+        self.dying_elapsed: float = 0.0
+        self._smoke_throttle: int = 0
 
     def on_spawn(self) -> None:
         params = _TYPE_PARAMS.get(self.kind, _TYPE_PARAMS[EnemyKind.SCOUT])
