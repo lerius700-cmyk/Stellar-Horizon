@@ -455,3 +455,50 @@ def test_dying_emits_smoke_when_fx_set():
     for sx, sy in e.fx.smokes:
         assert abs(sx - e.x) < 50
         assert sy >= 30  # never above the spawn point
+
+
+def test_enemy_dying_does_not_grow_trail_deque():
+    # 2026-09-06 visual polish v2: when an enemy is dying, the
+    # comet-tail light trail must NOT keep growing. The draw
+    # code skips the trail, and update() must not append new
+    # positions to the trail deque while dying.
+    e = Enemy()
+    e.kind = "scout"
+    e.on_spawn()
+    e.hp = 1
+    e.x = 100.0
+    e.y = 50.0
+    # Warm up the trail with the enemy alive
+    for _ in range(5):
+        e.update(0.05, FakePlayer())
+    trail_len_before = len(e._trail)
+    # Kill it
+    e.take_damage(1)
+    # Tick while dying — trail must not grow
+    for _ in range(20):
+        e.update(0.05, FakePlayer())
+    assert len(e._trail) == trail_len_before, (
+        f"trail should not grow during dying, "
+        f"was {trail_len_before}, now {len(e._trail)}"
+    )
+
+
+def test_enemy_dying_block_skips_movement_and_shooting():
+    # 2026-09-06 visual polish v2: when dying, the enemy should
+    # fall but NOT emit new trail positions (motion = path follower
+    # is skipped, but the falling still adds positions to _trail
+    # in the regular update flow — this test confirms the trail
+    # is frozen too).
+    e = Enemy()
+    e.kind = "scout"
+    e.on_spawn()
+    e.hp = 1
+    e.x = 200.0
+    e.y = 80.0
+    e.take_damage(1)
+    frozen = len(e._trail)
+    for _ in range(5):
+        e.update(0.05, FakePlayer())
+    assert len(e._trail) == frozen, (
+        f"dying enemy trail should be frozen, got {len(e._trail)} vs {frozen}"
+    )

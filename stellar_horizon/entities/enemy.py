@@ -287,10 +287,11 @@ class Enemy:
                                    intensity=self.trail_intensity)
 
         # --- Visual polish: comet-tail light trail ---
-        # Record current position for the afterimage trail. The draw
-        # code reads e._trail to render alpha-faded glows along the
-        # recent path.
-        self._trail.append((self.x, self.y))
+        # Record current position for the afterimage trail ONLY when
+        # the ship is alive (not dying). During the death-fall the
+        # trail is frozen so the draw code can skip it.
+        if self.dying_timer == 0.0:
+            self._trail.append((self.x, self.y))
 
         if self.x < -32 or self.y < -32 or self.y > 302:
             self.alive = False

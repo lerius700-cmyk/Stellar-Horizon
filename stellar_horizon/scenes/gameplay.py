@@ -628,13 +628,20 @@ class GameplayScene(Scene):
         if self.wave_manager:
             for e in self.wave_manager.spawned_enemies:
                 if e.alive:
-                    # --- Light trail (comet tail) drawn BEFORE the sprite
-                    # so the ship sits on top of the trail, not the other way.
-                    # Each trail position becomes a small alpha-faded glow.
-                    self._draw_enemy_trail(surface, e, ox, oy)
+                    # 2026-09-06 visual polish v2: motor cortado durante
+                    # la muerte. No trail, no engine flame, solo el
+                    # sprite (death burst / IDLE cayendo) + el smoke
+                    # trail nuevo de la destruction-fall v2.
+                    is_dying = getattr(e, "dying_timer", 0.0) > 0.0
+                    if not is_dying:
+                        # --- Light trail (comet tail) drawn BEFORE the sprite
+                        # so the ship sits on top of the trail, not the other way.
+                        # Each trail position becomes a small alpha-faded glow.
+                        self._draw_enemy_trail(surface, e, ox, oy)
+                    # --- Sprite (always drawn if alive, including during fall)
                     self._draw_enemy_sprite(surface, e, ox, oy)
-                    # Engine flame: anchored at the back of the ship, sized by speed
-                    if e.flame is not None:
+                    if not is_dying and e.flame is not None:
+                        # Engine flame: anchored at the back of the ship, sized by speed
                         e.flame.update(self._last_dt)
                         speed = math.hypot(e.vx, e.vy)
                         # Reduced 2026-09-06: was 1.0 + min(2.0, speed/100), max 3.0 (~24px flame, bigger than ship)
