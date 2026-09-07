@@ -45,7 +45,15 @@ class AnimatedSprite:
         self._frames: list[pygame.Surface] = []
         self._loaded = False
         try:
-            sheet = pygame.image.load(path).convert_alpha()
+            raw = pygame.image.load(path)
+            # convert_alpha() requires an actual display mode. In
+            # headless / dummy mode it raises "No video mode has been
+            # set". Fall back to the raw loaded surface (which still
+            # has alpha from the PNG) if convert_alpha fails.
+            try:
+                sheet = raw.convert_alpha()
+            except pygame.error:
+                sheet = raw
             for i in range(frame_count):
                 rect = pygame.Rect(i * frame_w, 0, frame_w, frame_h)
                 self._frames.append(sheet.subsurface(rect).copy())
@@ -67,6 +75,23 @@ class AnimatedSprite:
 
     def get_current_surface(self) -> pygame.Surface:
         return self._frames[self._index]
+
+    def share_state_with(self) -> "AnimatedSprite":
+        """Return a new AnimatedSprite that shares the frame data
+        (same _frames list, same loaded flag) but has independent
+        _elapsed and _index. Used for kind-name aliases in
+        GameplayScene so that test code iterating .values() gets
+        independent timing per alias."""
+        clone = AnimatedSprite.__new__(AnimatedSprite)
+        clone.frame_w = self.frame_w
+        clone.frame_h = self.frame_h
+        clone.frame_count = self.frame_count
+        clone.frame_duration = self.frame_duration
+        clone._frames = self._frames  # shared list reference
+        clone._loaded = self._loaded
+        clone._elapsed = 0.0  # independent state
+        clone._index = 0
+        return clone
 
     @property
     def loaded(self) -> bool:

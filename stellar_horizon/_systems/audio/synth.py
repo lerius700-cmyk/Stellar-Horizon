@@ -124,6 +124,18 @@ SFX_CATALOG: dict[str, _SfxSpec] = {
     "explode_small":          _SfxSpec("explode_small", Voice.NOISE, 200, -100, 0.002, 0.10, 0.1, 0.20, 0.30, "Scout/Cruiser death", 0.6),
     "explode_medium":         _SfxSpec("explode_medium", Voice.NOISE, 150, -80, 0.002, 0.15, 0.1, 0.30, 0.45, "Heavy/Drone death", 0.7),
     "explode_boss":           _SfxSpec("explode_boss", Voice.NOISE, 100, -50, 0.005, 0.30, 0.2, 0.80, 1.10, "Boss death finale", 1.0),
+    # 2026-09-06 polish: dedicated laser fire SFX — fast sawtooth pitch
+    # drop with no sustain, reads as a distinct "zap" instead of the
+    # generic square-wave "shoot" beep. Wired in Player._spawn_bullet
+    # alongside (not replacing) the existing shoot / shoot_charged so
+    # the audio still has per-weapon variety.
+    "laser_fire":             _SfxSpec("laser_fire", Voice.SAW, 880, -4200, 0.002, 0.04, 0.0, 0.08, 0.14, "Player laser fire", 0.6),
+    # 2026-09-06 polish: dedicated enemy explosion SFX — long noise
+    # burst with sustained tail and a low rumble. Replaces the existing
+    # explode_small/medium for the standard enemy death event so the
+    # death feels weightier (existing SFX are reused for bombs/bosses
+    # where the timing is different).
+    "enemy_explode":          _SfxSpec("enemy_explode", Voice.NOISE, 220, -80, 0.002, 0.20, 0.15, 0.40, 0.65, "Enemy ship explosion", 0.85),
     "bomb":                   _SfxSpec("bomb", Voice.SAW, 80, -40, 0.002, 0.20, 0.3, 0.40, 0.60, "Bomb triggered", 0.9),
     "powerup":                _SfxSpec("powerup", Voice.TRIANGLE, 660, 440, 0.005, 0.05, 0.4, 0.20, 0.25, "Power-up collected", 0.5),
     "dash":                   _SfxSpec("dash", Voice.NOISE, 2000, -3000, 0.005, 0.05, 0.0, 0.10, 0.15, "Dash whoosh", 0.4),

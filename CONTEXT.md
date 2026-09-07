@@ -78,10 +78,9 @@
 - **User action:** drag-replace the broken `StellarHorizon-v1.1.0-win64.zip`
   on the GitHub release page with the fresh 13.95 MB build.
   (URL: https://github.com/lerius700-cmyk/Stellar-Horizon/releases/tag/v1.1.0)
-- **User action (deferred):** regenerate the Stellar-Horizon PAT
-  as fine-grained scope (only Stellar-Horizon, only Contents: R&W)
-  instead of classic. Token currently works, just has broader scope
-  than needed.
+- ~~**User action (deferred):** regenerate the Stellar-Horizon PAT
+  as fine-grained scope.~~ **DONE 2026-09-06** — token ya es
+  fine-grained (`github_pat_11...`, len 93 en `$env:STELLAR_HORIZON_TOKEN`).
 - **User action:** push the SF+SM refactor commits to `origin/main`
   (so the local advances + Token Budget + .gitignore become
   canonical on GitHub). Note: this is a SEPARATE push from the

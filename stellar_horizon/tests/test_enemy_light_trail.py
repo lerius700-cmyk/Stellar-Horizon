@@ -9,6 +9,10 @@ These tests assert:
 - The trail grows as the enemy moves
 - The trail is capped at the configured max length
 - The trail contains actual position history (not just current)
+- The draw code can slice the deque without crashing
+  (regression guard for the v1.1.1 ship bug where
+  `trail[:-1]` on a deque raised TypeError and the game
+  crashed 1 second after pressing SPACE on the title screen)
 """
 from __future__ import annotations
 
@@ -110,3 +114,57 @@ def test_trail_contains_position_history() -> None:
         "trail should contain past positions (right of current) "
         f"for a ship moving left; current x={current[0]}, trail={list(e._trail)}"
     )
+
+
+@pytest.fixture(autouse=True)
+def _sdl_dummy(monkeypatch):
+    """The draw code needs pygame display mode for SRCALPHA surfaces.
+    Without SDL_VIDEODRIVER=dummy, this fails on a headless runner."""
+    monkeypatch.setenv("SDL_VIDEODRIVER", "dummy")
+    monkeypatch.setenv("SDL_AUDIODRIVER", "dummy")
+
+
+def test_draw_enemy_trail_does_not_crash_on_deque_slice() -> None:
+    """Regression: gameplay.py:_draw_enemy_trail did `trail[:-1]` where
+    `trail` is a collections.deque. deques do NOT support slicing, so
+    the .exe crashed 1 second after pressing SPACE on the title screen
+    with `TypeError: sequence index must be integer, not 'slice'`.
+
+    The fix wraps the deque in list() before slicing. This test
+    exercises the full path: construct a real GameplayScene, populate
+    an enemy's trail, call the draw method on a real surface. If
+    anyone removes the list() cast, this test fails.
+    """
+    import pygame
+    pygame.init()
+    try:
+        from stellar_horizon.audio.midi_player import MidiPlayer
+        from stellar_horizon.scenes.gameplay import GameplayScene
+        from stellar_horizon.entities.enemy import Enemy
+        from pathlib import Path
+        here = Path(__file__).resolve().parent
+        wave_json = here.parent / "waves" / "waves_act1.json"
+        assets_dir = here.parent / "assets"
+
+        s = GameplayScene(MidiPlayer(), wave_json, assets_dir)
+        s.on_enter()  # loads sprites, wave manager, fx, etc.
+
+        # Force-spawn a scout with a 2+ entry trail.
+        e = Enemy()
+        e.kind = "scout"
+        e.on_spawn()
+        e.x, e.y = 200.0, 135.0
+        e.vx, e.vy = -50.0, 0.0
+        e.alive = True
+        e.hp = e.max_hp
+        e.path_done = True
+        for _ in range(5):
+            e.update(1 / 120, player=None)
+        assert len(e._trail) >= 2, "test setup: need >= 2 trail entries"
+
+        # CRITICAL: this is the call that crashed the .exe at runtime.
+        # Must not raise TypeError on the deque slice.
+        surface = pygame.Surface((480, 270))
+        s._draw_enemy_trail(surface, e, 0, 0)  # MUST NOT RAISE
+    finally:
+        pygame.quit()

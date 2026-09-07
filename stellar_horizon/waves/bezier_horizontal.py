@@ -54,9 +54,15 @@ def path_zigzag_exit_top() -> HybridPath:
 
 
 def path_boss_entry() -> BezierPath:
-    """Dramatic S-curve from off-screen right to boss arena (350, 135)."""
+    """Dramatic S-curve from off-screen right to boss arena (350, 135).
+
+    2026-09-06 fix: entry start moved from (540, 60) to (480, 60) so
+    the boss doesn't visibly extend off the right edge of the 480-wide
+    viewport during the entry animation (the boss sprite is now 80x80
+    and centered, so off-screen time is brief but no longer cut).
+    """
     return BezierPath(
-        p0=Point(540, 60),
+        p0=Point(480, 60),
         p1=Point(450, 100),
         p2=Point(380, 200),
         p3=Point(350, 135),

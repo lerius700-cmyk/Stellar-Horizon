@@ -68,15 +68,15 @@ def test_animated_sprite_loaded_flag():
 # --- GameplayScene integration ----------------------------------------
 
 def test_gameplay_scene_loads_sprites_split():
-    """Lasers were split out into single-frame static sprites so the
-    per-weapon VFX (alpha pulse, scale pulse, halo) can be applied
-    in code rather than baked into 6-frame strips that the model
-    rendered inconsistently.
-
-    Total: 31 animated (6 active + 20 enemy + 5 player) — boss was
-    moved out of _animated into the 4-state _boss_anims dict
-    (IDLE / TELEGRAPH / CHARGE / DYING) + 10 laser single-frame = 45
-    sprites, up from 42.
+    """2026-09-06 polish pass: switched to AI-generated sprites in
+    sprites_v2/. New layout:
+    - _animated: 5 player variants + 20 enemy variants (4 scout, 4
+      cruiser, 3 heavy, 3 bomber, 3 ufo, 3 kamikaze) + 2 legacy
+      bullets = 27 total. 10 frames per sheet at 12 fps, 64x64.
+    - _boss_anims: 6 states (IDLE, TELEGRAPH, CHARGE, DYING +
+      2 alternates), 10 frames per sheet at 8 fps, 96x96.
+    - _laser_sprites: 5 single-frame first-frames of the 5 laser
+      sheets (48x16). Used for HUD display + VFX halo centering.
     """
     from stellar_horizon.audio.midi_player import MidiPlayer
     from stellar_horizon.scenes.gameplay import GameplayScene
@@ -85,46 +85,80 @@ def test_gameplay_scene_loads_sprites_split():
                       Path("stellar_horizon/waves/waves_act1.json"),
                       Path("stellar_horizon/assets"))
     s._load_sprites()
-    # Animated cache: 6 active (player, scout, cruiser, heavy,
-    # player_bullet, enemy_bullet) + 20 enemy + 5 player = 31.
-    # Boss was split into 4 _boss_anims (see below).
-    assert len(s._animated) == 31
-    for n in ("player", "scout", "cruiser", "heavy",
-              "player_bullet", "enemy_bullet"):
+    # Animated cache: 5 player + 20 enemy (per _ENEMY_SPRITE_CYCLE) +
+    # 2 legacy bullets + 7 kind-name aliases (scout, cruiser, heavy,
+    # bomber, ufo, kamikaze, player) + 13 action sheets (1 player
+    # thrust + 6 enemy attack + 6 enemy death) = 47.
+    assert len(s._animated) == 47
+    # 5 player variants.
+    for n in ("player_v1", "player_v2", "player_v3", "player_v4", "player_v5"):
         assert n in s._animated
-    # Boss is no longer in _animated.
+    # 20 enemy variants per the cycle.
+    for n in ("enemy_scout_v1", "enemy_scout_v2", "enemy_scout_v3", "enemy_scout_v4",
+              "enemy_cruiser_v1", "enemy_cruiser_v2", "enemy_cruiser_v3", "enemy_cruiser_v4",
+              "enemy_heavy_v1", "enemy_heavy_v2", "enemy_heavy_v3",
+              "enemy_bomber_v1", "enemy_bomber_v2", "enemy_bomber_v3",
+              "enemy_ufo_v1", "enemy_ufo_v2", "enemy_ufo_v3",
+              "enemy_kamikaze_v1", "enemy_kamikaze_v2", "enemy_kamikaze_v3"):
+        assert n in s._animated
+    # Legacy bullets (still on old sprites/ dir).
+    for n in ("player_bullet", "enemy_bullet"):
+        assert n in s._animated
+    # Boss is in _boss_anims, not _animated.
     assert "boss" not in s._animated
+    # Legacy enemy_01..20 / player_01..05 are NOT in the new
+    # _animated (replaced by the v2 naming). Kind names (scout,
+    # cruiser, heavy, bomber, ufo, kamikaze, player) ARE present
+    # as aliases that point to the v1 variant (used as draw-code
+    # fallback when an enemy has no sprite_name set).
     for n in (f"enemy_{i:02d}" for i in range(1, 21)):
-        assert n in s._animated
+        assert n not in s._animated
     for n in (f"player_{i:02d}" for i in range(1, 6)):
+        assert n not in s._animated
+    # The 7 kind-name aliases ARE present.
+    for n in ("scout", "cruiser", "heavy", "bomber", "ufo", "kamikaze", "player"):
         assert n in s._animated
-    # Lasers MUST NOT be in the animated cache anymore.
+    # Lasers MUST NOT be in the animated cache (they're single-frame
+    # first-frames in _laser_sprites).
     for n in (f"laser_{i:02d}" for i in range(1, 11)):
         assert n not in s._animated
-    # Single-frame laser cache: 10 sprites.
-    assert len(s._laser_sprites) == 10
-    for n in (f"laser_{i:02d}" for i in range(1, 11)):
+    # Single-frame laser cache: 5 sprites (one per weapon).
+    assert len(s._laser_sprites) == 5
+    for n in (f"laser_{i:02d}" for i in range(1, 6)):
         assert n in s._laser_sprites
         surf = s._laser_sprites[n]
         # Each sprite is a real Surface (not the magenta 1x1 fallback).
         assert surf.get_width() >= 1
         assert surf.get_height() >= 1
-    # Boss animations: 4 states, each at 8 fps with 6 frames of 48x48.
-    assert len(s._boss_anims) == 4
-    for state in ("idle", "telegraph", "charge", "dying"):
+    # Boss animations: 6 states (4 + 2 alternates), 10 frames each
+    # at 8 fps, 72x72 per frame (10% shrink of 80x80).
+    assert len(s._boss_anims) == 6
+    for state in ("idle", "telegraph", "charge", "dying",
+                  "alternate_a", "alternate_b"):
         assert state in s._boss_anims
         anim = s._boss_anims[state]
-        assert anim.frame_w == 48
-        assert anim.frame_h == 48
-        assert anim.frame_count == 6
+        # 2026-09-06 polish 1: boss size 96x96 -> 80x80 to stop the
+        # right-edge clipping during path_boss_entry()'s start at
+        # x=480 in the 480-wide viewport.
+        # 2026-09-06 polish 2 (10% shrink): 80x80 -> 72x72 to give
+        # the playfield more breathing room.
+        assert anim.frame_w == 72
+        assert anim.frame_h == 72
+        assert anim.frame_count == 10
         # 8 fps => 0.125s per frame.
         assert abs(anim.frame_duration - 0.125) < 1e-6
 
 
 def test_laser_sprites_have_per_weapon_sizes():
-    """Per-weapon sprites have distinct sizes (12x4 bolts, 10x10 orbs,
-    14x2 / 16x2 thin needles, 12x10 heart). The HUD and bullet draw
-    code rely on these sizes to center the VFX halo correctly."""
+    """2026-09-06 polish pass: laser set reduced to 5 (one per weapon
+    archetype). Originally 48x16, then 32x8 (further shrink during
+    ship model 10% reduction). 2026-09-06 polish pass 2: 32x8 -> 29x7
+    (10% smaller across the board to give more playfield space). The
+    HUD and bullet draw code use these surfaces to center the VFX
+    halo. The runtime animation (alpha-pulse) is driven by
+    bullet_vfx.compute() from the sheet, not these static
+    first-frames.
+    """
     from stellar_horizon.audio.midi_player import MidiPlayer
     from stellar_horizon.scenes.gameplay import GameplayScene
 
@@ -132,23 +166,14 @@ def test_laser_sprites_have_per_weapon_sizes():
                       Path("stellar_horizon/waves/waves_act1.json"),
                       Path("stellar_horizon/assets"))
     s._load_sprites()
-    expected = {
-        "laser_01": (12, 4), "laser_02": (12, 4),
-        "laser_03": (14, 2),
-        "laser_04": (10, 10), "laser_05": (10, 10),
-        "laser_06": (10, 10),
-        "laser_07": (16, 2),
-        "laser_08": (12, 10),
-        "laser_09": (10, 10),
-        "laser_10": (16, 4),
-    }
-    for name, (w, h) in expected.items():
+    for i in range(1, 6):
+        name = f"laser_{i:02d}"
         surf = s._laser_sprites[name]
-        assert surf.get_width() == w, (
-            f"{name} width {surf.get_width()} != {w}"
+        assert surf.get_width() == 29, (
+            f"{name} width {surf.get_width()} != 29"
         )
-        assert surf.get_height() == h, (
-            f"{name} height {surf.get_height()} != {h}"
+        assert surf.get_height() == 7, (
+            f"{name} height {surf.get_height()} != 7"
         )
 
 

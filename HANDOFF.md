@@ -62,9 +62,9 @@ $result = Invoke-WebRequest -Method Post -Headers $upH -InFile $zip -Uri "https:
 $result.Content | ConvertFrom-Json  # verify browser_download_url
 ```
 
-### 🟡 2. Regenerar el token como fine-grained
+### 🟡 2. Regenerar el token como fine-grained — **DONE 2026-09-06**
 
-El usuario tiene un classic PAT (admin/maintain/push/triage/pull) en su env var. Dijo "luego hago eso" sobre regenerar como fine-grained (scope: solo Stellar-Horizon, Contents: R&W). **No urgente** — el classic funciona, solo tiene scope más amplio que el necesario. URL: https://github.com/settings/tokens?type=beta
+El usuario ya regeneró el token como fine-grained. Verificado en esta sesión: `$env:STELLAR_HORIZON_TOKEN` empieza con `github_pat_11`, longitud 93. Scope narrow (solo Stellar-Horizon, Contents: R&W). El HANDOFF inicial lo había documentado como classic — stale.
 
 ### 🟢 3. Limpiar dead code en `_systems/`
 

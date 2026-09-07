@@ -61,6 +61,17 @@ _ENEMY_TRAIL_INTENSITY = {
     EnemyKind.KAMIKAZE: 0.9,
 }
 
+# 2026-09-06 polish: when an enemy dies it now falls to the
+# ground instead of locking in place. The dying_timer drives the
+# fall duration, but the ship also gets purged early if it leaves
+# the bottom of the viewport. Tuned so a heavy/bomber that dies
+# at y=80 reaches the ground (~y=270) in ~0.7s, matching the
+# death-sheet loop length.
+_ENEMY_DYING_GRAVITY_PX_S2 = 620.0   # px/s^2
+_ENEMY_DYING_HORIZONTAL_DRIFT = 0.35  # multiplier on vx while falling
+_ENEMY_DYING_TUMBLE_DEG_PER_S = 240.0 # visual rotation rate
+_ENEMY_DYING_OFFSCREEN_Y = 295.0      # beyond the bottom edge of the 270-tall viewport
+
 
 class Enemy:
     __slots__ = (
@@ -74,11 +85,21 @@ class Enemy:
         "kamikaze_charge",  # KAMIKAZE: seconds spent charging (0 = cruising)
         # Visual variant (set by the spawner, used by the draw code).
         "sprite_name",
+        "base_sprite_name", # the spawner-set sprite, before action swap
         # VFX (set by the gameplay scene; used by take_damage and update).
         "fx",               # FxLayer reference for particle emission
         "flame",            # EngineFlame instance
         "trail_intensity",  # 0..1, how much trail to emit
         "_trail",           # deque[(x, y)] of recent positions for the comet-tail light trail
+        # Death sequence (visual polish 2026-09-06).
+        # When HP -> 0, `take_damage` keeps `alive = True` and starts
+        # a `dying_timer` countdown so the death sheet can play out.
+        # Only when the timer reaches 0 do we set `alive = False` and
+        # let the wave manager purge the enemy. The base_sprite_name
+        # field captures the original sheet name so callers can
+        # distinguish "death sheet" from "IDLE/v1 sheet".
+        "dying_timer",      # seconds remaining of the death animation (0 = not dying)
+        "dying_rotation",   # visual tumble: degrees rotated while falling
     )
 
     def __init__(self) -> None:
@@ -106,9 +127,12 @@ class Enemy:
         self.ufo_base_y: float = 0.0
         self.kamikaze_charge: float = 0.0
         self.sprite_name: str = ""
+        self.base_sprite_name: str = ""
         self.fx = None  # FxLayer injected by GameplayScene on spawn
         self.flame: EngineFlame | None = None
         self.trail_intensity: float = 0.0
+        self.dying_timer: float = 0.0
+        self.dying_rotation: float = 0.0
 
     def on_spawn(self) -> None:
         params = _TYPE_PARAMS.get(self.kind, _TYPE_PARAMS[EnemyKind.SCOUT])
@@ -143,6 +167,33 @@ class Enemy:
         """
         from stellar_horizon.entities.bullet import EnemyBullet
         if not self.alive:
+            return []
+        # --- Death sequence (visual polish 2026-09-06) ---
+        # If a previous take_damage() set the dying_timer, the enemy
+        # falls to the ground under arcade gravity and tumbles. Skip
+        # movement, shooting, telegraphing, and trail emission — only
+        # the death sheet plays out. The ship is removed from the
+        # wave manager ONLY when it leaves the bottom of the viewport
+        # (y > 295). Killing on timer expiration would yank the
+        # tumbling sprite out of view mid-fall, which looked broken
+        # in early playtests. With the chosen gravity (620 px/s^2),
+        # a ship killed at y=40 reaches the offscreen line in ~0.9s,
+        # so the 1.0s timer is the safety net for low-altitude kills
+        # that reach the ground before the timer expires.
+        if self.dying_timer > 0.0:
+            self.dying_timer -= dt
+            # Apply gravity to the y velocity, then integrate. The
+            # horizontal velocity is dampened so the ship doesn't
+            # keep flying forward as it falls — it tumbles.
+            self.vy += _ENEMY_DYING_GRAVITY_PX_S2 * dt
+            self.y += self.vy * dt
+            self.x += self.vx * _ENEMY_DYING_HORIZONTAL_DRIFT * dt
+            # Visual tumble (degrees). Unbounded; the draw code
+            # mods by 360 internally.
+            self.dying_rotation += _ENEMY_DYING_TUMBLE_DEG_PER_S * dt
+            if self.y > _ENEMY_DYING_OFFSCREEN_Y or self.dying_timer <= 0.0:
+                self.dying_timer = 0.0
+                self.alive = False
             return []
         new_bullets: list = []
 
@@ -255,7 +306,27 @@ class Enemy:
     def take_damage(self, amount: int) -> None:
         self.hp -= amount
         if self.hp <= 0:
-            self.alive = False
+            # Start the death sequence: keep `alive = True` so the
+            # wave manager doesn't immediately purge us. The death
+            # sheet (enemy_{kind}_death_v1) takes over the draw
+            # output and the death timer counts down. While
+            # `dying_timer > 0`, the update() path skips movement
+            # and shooting.
+            #
+            # Remember the originally-assigned sprite so the death
+            # sheet swap is reversible if some code path needs the
+            # base back (none does today, but it costs nothing to
+            # keep the invariant).
+            if self.dying_timer <= 0.0:
+                self.base_sprite_name = self.sprite_name
+                # Swap to the per-kind death sheet. The gameplay
+                # scene's _draw_enemy_sprite() will detect
+                # dying_timer > 0 and use this name (overriding
+                # the kind-based fallback if sprite_name was empty).
+                # Timer is 1.0s so the 10-frame @ 12fps death sheet
+                # (0.83s) plays one full loop with a small tail.
+                self.sprite_name = f"enemy_{self.kind}_death_v1"
+                self.dying_timer = 1.0
             if self.fx is not None:
                 self.fx.emit_explosion_typed(self.kind, self.x, self.y)
 

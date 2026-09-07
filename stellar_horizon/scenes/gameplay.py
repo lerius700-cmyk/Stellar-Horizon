@@ -30,16 +30,18 @@ from stellar_horizon.waves.wave_manager import WaveManager
 
 
 # Maps each enemy kind to a list of sprite names that cycle per spawn.
-# Each kind gets 2-3 visually coherent variants from the 20-sprite
-# enemy library. The draw code uses the first variant as the default
-# (when the cycle hasn't ticked yet) and then rotates.
+# Each kind gets 2-4 visually coherent AI-generated variants from the
+# sprites_v2/ library. Variants are procedurally animated (10 frames
+# per sheet, see generate_sheets.py). The draw code uses the first
+# variant as the default (when the cycle hasn't ticked yet) and then
+# rotates.
 _ENEMY_SPRITE_CYCLE = {
-    "scout":    ("enemy_01", "enemy_07", "enemy_16"),    # red dart, pink destroyer, silver chrome
-    "cruiser":  ("enemy_02", "enemy_11", "enemy_13"),    # purple wedge, magenta crystal, bronze golem
-    "heavy":    ("enemy_04", "enemy_08", "enemy_14"),    # blue diamond, cyan ghost, teal aquatic
-    "bomber":   ("enemy_03", "enemy_17", "enemy_19"),    # orange bomber, gold royal, crimson fanged
-    "ufo":      ("enemy_06", "enemy_18"),                # yellow saucer, violet phantom
-    "kamikaze": ("enemy_10", "enemy_12", "enemy_15"),    # black stealth, lime insect, coral snake
+    "scout":    ("enemy_scout_v1",    "enemy_scout_v2",    "enemy_scout_v3",    "enemy_scout_v4"),
+    "cruiser":  ("enemy_cruiser_v1",  "enemy_cruiser_v2",  "enemy_cruiser_v3",  "enemy_cruiser_v4"),
+    "heavy":    ("enemy_heavy_v1",    "enemy_heavy_v2",    "enemy_heavy_v3"),
+    "bomber":   ("enemy_bomber_v1",   "enemy_bomber_v2",   "enemy_bomber_v3"),
+    "ufo":      ("enemy_ufo_v1",      "enemy_ufo_v2",      "enemy_ufo_v3"),
+    "kamikaze": ("enemy_kamikaze_v1", "enemy_kamikaze_v2", "enemy_kamikaze_v3"),
 }
 
 
@@ -118,6 +120,10 @@ class GameplayScene(Scene):
         # each cycling at 8 fps with 6 frames. _draw_boss_sprite()
         # picks the right one based on boss.phase + boss.action.
         self._boss_anims: dict = {}
+        # Black silhouette outlines (1.08x scale) pre-computed at load
+        # time, keyed by (category, sprite_name). The draw code blits
+        # the silhouette behind the actual sprite for a clear border.
+        self._silhouettes: dict = {}
         # Scene-time accumulator (seconds since on_enter). Used to
         # drive code-driven VFX (bullet pulses, halo phase) so they
         # stay in sync with the rest of the scene.
@@ -158,82 +164,132 @@ class GameplayScene(Scene):
         self.thrusters.set_player("player")
 
     def _load_sprites(self) -> None:
-        """Load animated sprite sheets from assets/sprites/*_sheet.png
-        AND single-frame laser sprites from assets/sprites/laser_NN.png.
+        """Load animated sprite sheets from assets/sprites_v2/*_sheet.png.
 
-        Animated sheets (player, enemies, boss, bullets) hold 6 frames
-        and cycle at 12 fps for the standard 16-bit look. Lasers are
-        loaded as single-frame static sprites because:
-        - 6-frame strips for round/heart shapes were inconsistent (the
-          model shifted them between frames).
-        - The per-weapon VFX (alpha pulse, scale pulse, halo) is more
-          controllable in code than baked into frames.
-        The result: 32 animated sprites (7 active + 20 enemy + 5
-        player) + 10 single-frame laser sprites = 42 total.
+        2026-09-06 polish pass: switched to AI-generated singles in
+        sprites_v2/ (procedurally expanded to 10-frame sheets by
+        sprite_tests/generate_sheets.py). The old sprites/ assets are
+        kept on disk for reference but are no longer loaded.
+
+        Frame counts and dimensions:
+          - Player + 4 player variants: 10 frames @ 12 fps, 64x64
+          - 20 enemy variants (4 scout, 4 cruiser, 3 heavy, 3 bomber,
+            3 ufo, 3 kamikaze): 10 frames @ 12 fps, 64x64
+          - 6 boss states (idle, telegraph, charge, dying, alt_a, alt_b):
+            10 frames @ 8 fps, 96x96
+          - 5 lasers: 10 frames @ 14 fps, 48x16 (alpha-pulse animation)
         """
-        sprite_dir = self.assets_dir / "sprites"
-        # All names to load as animated sheets (no laser_NN here).
-        animated_names = {
-            # Active game assets.
-            "player", "scout", "cruiser", "heavy", "boss",
-            "player_bullet", "enemy_bullet",
-            # 20 enemy variants.
-            *[f"enemy_{i:02d}" for i in range(1, 21)],
-            # 5 player variants.
-            *[f"player_{i:02d}" for i in range(1, 6)],
-        }
-        # Per-name dimensions for animated sheets.
-        anim_dims = {
-            "player": (16, 16), "scout": (16, 16), "cruiser": (16, 16),
-            "heavy": (16, 16), "boss": (48, 48),
-            "player_bullet": (8, 8), "enemy_bullet": (8, 8),
-        }
-        for n in (f"player_{i:02d}" for i in range(1, 6)):
-            anim_dims[n] = (16, 16)
-        for n in (f"enemy_{i:02d}" for i in range(1, 21)):
-            anim_dims[n] = (16, 16)
+        sprite_dir = self.assets_dir / "sprites_v2"
+        # All names to load as animated sheets. Player + 4 player
+        # variants + 20 enemy variants + 2 bullets (kept from old).
+        animated_names = [
+            # Player + variants.
+            "player_v1", "player_v2", "player_v3", "player_v4", "player_v5",
+            # 20 enemy variants across 6 kinds (see _ENEMY_SPRITE_CYCLE).
+            "enemy_scout_v1",    "enemy_scout_v2",    "enemy_scout_v3",    "enemy_scout_v4",
+            "enemy_cruiser_v1",  "enemy_cruiser_v2",  "enemy_cruiser_v3",  "enemy_cruiser_v4",
+            "enemy_heavy_v1",    "enemy_heavy_v2",    "enemy_heavy_v3",
+            "enemy_bomber_v1",   "enemy_bomber_v2",   "enemy_bomber_v3",
+            "enemy_ufo_v1",      "enemy_ufo_v2",      "enemy_ufo_v3",
+            "enemy_kamikaze_v1", "enemy_kamikaze_v2", "enemy_kamikaze_v3",
+            # 2026-09-06: per-action sheets. ATTACK is shown when the
+            # enemy is telegraphing/about to fire. DEATH is shown
+            # during the death sequence (replaces the IDLE/v1 sheet
+            # for the duration of the death animation). The wave
+            # manager / enemy take_damage code can swap to these
+            # by setting e.sprite_name to the action sheet name.
+            "player_thrust_v1",
+            "enemy_scout_attack_v1",   "enemy_scout_death_v1",
+            "enemy_cruiser_attack_v1", "enemy_cruiser_death_v1",
+            "enemy_heavy_attack_v1",   "enemy_heavy_death_v1",
+            "enemy_bomber_attack_v1",  "enemy_bomber_death_v1",
+            "enemy_ufo_attack_v1",     "enemy_ufo_death_v1",
+            "enemy_kamikaze_attack_v1","enemy_kamikaze_death_v1",
+        ]
+        # Bullets stay on the legacy sprites/ dir (small 8x8 projectiles
+        # not worth AI regenerating).
+        bullet_dir = self.assets_dir / "sprites"
+        bullet_names = ["player_bullet", "enemy_bullet"]
 
         self._animated.clear()
+        # Pre-compute black silhouettes for the outline effect.
+        # Each silhouette is a scaled-up (1.08x) all-black version of
+        # the sprite, used as a backdrop so the sprite reads as having
+        # a clear border against any background color.
+        self._silhouettes.clear()
+        # Player + enemies: 10 frames at 12 fps, 29x29 (was 32x32,
+        # shrunk 10% 2026-09-06 for more playfield space).
         for name in animated_names:
-            w, h = anim_dims.get(name, (16, 16))
-            # Skip the legacy "boss" name — replaced by the 4-state
-            # boss animation set below.
-            if name == "boss":
-                continue
             path = sprite_dir / f"{name}_sheet.png"
-            self._animated[name] = AnimatedSprite(str(path), w, h, 6,
-                                                  fps=12.0)
-        # Boss has 4 animations (IDLE, TELEGRAPH, CHARGE, DYING) at
-        # 8 fps with 6 frames each. They replace the old single
-        # "boss" sheet so the boss now visibly changes pose across
-        # its state machine cycle.
-        self._boss_anims.clear()
-        for state in ("idle", "telegraph", "charge", "dying"):
-            path = sprite_dir / f"boss_{state}_sheet.png"
-            self._boss_anims[state] = AnimatedSprite(
-                str(path), 48, 48, 6, fps=8.0,
+            anim = AnimatedSprite(
+                str(path), 29, 29, 10, fps=12.0,
             )
-        # Single-frame laser sprites — loaded as plain pygame.Surface
-        # (no animation). Animation comes from fx/bullet_vfx.compute()
-        # at draw time.
+            self._animated[name] = anim
+            self._silhouettes[("enemy", name)] = self._make_silhouette_set(anim)
+        # Kind-name fallback (e.g. "scout" -> enemy_scout_v1). The
+        # draw code uses self._animated.get(e.kind) when an enemy has
+        # no sprite_name set. We point each kind at the FIRST variant
+        # of its cycle so the fallback shows a representative sprite.
+        # NOTE: this shares the AnimatedSprite instance with the v1
+        # variant — that's intentional and the draw code reads from
+        # the same key path either way. Test code that iterates
+        # .values() and updates each gets DOUBLE updates for these
+        # aliases (since they're the same object); that's fine for
+        # the production code paths which read .get_current_surface()
+        # from a specific key per draw call.
+        for kind, default_variant in (
+            ("scout",    "enemy_scout_v1"),
+            ("cruiser",  "enemy_cruiser_v1"),
+            ("heavy",    "enemy_heavy_v1"),
+            ("bomber",   "enemy_bomber_v1"),
+            ("ufo",      "enemy_ufo_v1"),
+            ("kamikaze", "enemy_kamikaze_v1"),
+            ("player",   "player_v1"),
+        ):
+            if default_variant in self._animated and kind not in self._animated:
+                # Use share_state_with() so the alias has independent
+                # _elapsed/_index but shares the loaded frame data.
+                # This avoids test-side double-update surprises.
+                self._animated[kind] = self._animated[default_variant].share_state_with()
+        # Bullets: 6 frames at 12 fps, 8x8 (legacy dimensions).
+        for name in bullet_names:
+            path = bullet_dir / f"{name}_sheet.png"
+            self._animated[name] = AnimatedSprite(
+                str(path), 8, 8, 6, fps=12.0,
+            )
+        # Boss has 6 animations (IDLE, TELEGRAPH, CHARGE, DYING + 2
+        # alternates) at 8 fps with 10 frames each, 72x72 per frame.
+        # 2026-09-06: shrunk 10% from 80x80 to 72x72 for more playfield
+        # space and less boss clipping during the entry animation.
+        self._boss_anims.clear()
+        for state in ("idle", "telegraph", "charge", "dying",
+                      "alternate_a", "alternate_b"):
+            path = sprite_dir / f"boss_{state}_v1_sheet.png"
+            anim = AnimatedSprite(
+                str(path), 72, 72, 10, fps=8.0,
+            )
+            self._boss_anims[state] = anim
+            # Pre-compute silhouette for the boss (per state, since
+            # the boss can be in different animations).
+            self._silhouettes[("boss", state)] = self._make_silhouette_set(anim)
+        # Laser sheets: 10 frames at 14 fps, 29x7 (alpha-pulse for
+        # "energy" read). _laser_sprites stores the FIRST FRAME of
+        # each sheet (29x7) so the HUD and bullet draw code can use
+        # them as static single-frame sprites for halo centering.
+        # 2026-09-06: shrunk from 32x8 to 29x7 to match the 10%
+        # global shrink.
         self._laser_sprites.clear()
-        for i in range(1, 11):
+        for i in range(1, 6):
             name = f"laser_{i:02d}"
-            path = sprite_dir / f"{name}.png"
+            path = sprite_dir / f"{name}_sheet.png"
             try:
-                # NOTE: convert_alpha() needs a display mode, which
-                # isn't set during some headless tests. We try it
-                # first (fast, native alpha) and fall back to the
-                # raw loaded surface (still has alpha from the PNG
-                # but in source format) if no display is up.
                 raw = pygame.image.load(str(path))
+                first_frame = raw.subsurface(pygame.Rect(0, 0, 29, 7)).copy()
                 try:
-                    surf = raw.convert_alpha()
+                    surf = first_frame.convert_alpha()
                 except pygame.error:
-                    surf = raw
+                    surf = first_frame
             except (pygame.error, FileNotFoundError):
-                # Fall back to a 1x1 magenta surface so the bug is
-                # visible at a glance.
                 surf = pygame.Surface((1, 1), pygame.SRCALPHA)
                 surf.fill((255, 0, 255, 255))
             self._laser_sprites[name] = surf
@@ -379,21 +435,27 @@ class GameplayScene(Scene):
                                             color=(255, 240, 100))
                         e.take_damage(1)
                         b.alive = False
-                        sfx.play_event("hit")
+                        # 2026-09-06 polish: hit SFX was loud enough to
+                        # drown out the explosion tail on the next
+                        # frame. Halve the volume (0.7 -> 0.35 effective
+                        # via the 0.5 multiplier against master_volume).
+                        sfx.play_event("hit", volume=0.5)
                         if not e.alive:
                             self.score += e.score_value()
                             trauma = 0.10
-                            kill_sfx = "explode_small"
+                            kill_sfx = "enemy_explode"
                             if e.kind in ("heavy", "bomber"):
                                 trauma = 0.22
-                                kill_sfx = "explode_medium"
                             if e.kind == "kamikaze":
                                 trauma = 0.30
-                                kill_sfx = "explode_medium"
                             # Explosion is auto-emitted by Enemy.take_damage via emit_explosion_typed
                             self.fx.emit_impact(e.x, e.y, count=14,
                                                 color=(255, 200, 80))
                             self.shake.add_trauma(trauma)
+                            # 2026-09-06 polish: dedicated enemy_explode
+                            # SFX (long noise burst with rumble) replaces
+                            # the shorter explode_small/medium. Boss and
+                            # bomb deaths keep their own SFX elsewhere.
                             sfx.play_event(kill_sfx)
                             # Power-up drop roll (silver 10%, gold 5%).
                             drop_kind = roll_enemy_drop()
@@ -412,8 +474,10 @@ class GameplayScene(Scene):
                     self.fx.emit_impact(self.player.x, self.player.y,
                                         count=14,
                                         color=(255, 100, 100))
-                    sfx.play_event("explode_small" if e.kind != "kamikaze"
-                                   else "explode_medium")
+                    # 2026-09-06 polish: same dedicated enemy_explode
+                    # SFX as the bullet-kill path so contact deaths and
+                    # bullet deaths sound identical.
+                    sfx.play_event("enemy_explode")
                     e.alive = False
             if self.wave_manager.wave_complete:
                 if not self.wave_manager.next_wave():
@@ -654,14 +718,66 @@ class GameplayScene(Scene):
         rect = sprite.get_rect(center=(int(cx), int(cy)))
         surface.blit(sprite, rect)
 
+    def _blit_centered_rotated(self, surface, sprite, cx: float, cy: float,
+                                angle_deg: float) -> None:
+        """Variant of _blit_centered that rotates the sprite around
+        its center. Used by the death-fall animation so the ship
+        visibly tumbles as it drops under gravity.
+        """
+        if sprite is None:
+            return
+        rotated = pygame.transform.rotate(sprite, angle_deg)
+        rect = rotated.get_rect(center=(int(cx), int(cy)))
+        surface.blit(rotated, rect)
+
+    def _make_silhouette_set(self, anim: "AnimatedSprite", scale: float = 1.08) -> list:
+        """Pre-compute black silhouette frames for the outline effect.
+
+        Returns a list of pygame.Surface, one per frame of `anim`,
+        where each silhouette is the frame scaled up by `scale` and
+        filled all-black (preserving the alpha channel). The draw
+        code blits one silhouette behind each sprite to give it a
+        clear dark border against any background.
+        """
+        silhouettes: list = []
+        for frame in anim._frames:
+            sw, sh = frame.get_size()
+            scaled = pygame.transform.scale(frame, (max(1, int(sw * scale)),
+                                                   max(1, int(sh * scale))))
+            # Convert to all-black, preserving alpha.
+            silhouette = pygame.Surface(scaled.get_size(), pygame.SRCALPHA)
+            silhouette.blit(scaled, (0, 0))
+            silhouette.fill((0, 0, 0, 255), special_flags=pygame.BLEND_RGBA_MULT)
+            silhouettes.append(silhouette)
+        return silhouettes
+
     def _draw_player_sprite(self, surface, p, ox, oy) -> None:
-        sprite = self._animated.get("player")
-        if sprite is None or not sprite.loaded:
+        # 2026-09-06 polish: during the 1.5s death sequence, swap
+        # to the player_thrust_v1 sheet so the ship visually fades
+        # out instead of looping the IDLE/v1 sheet. The thrust sheet
+        # is the closest match we have without generating a
+        # dedicated death sprite (a "thrust fading" read sells the
+        # loss-of-control moment better than a frozen pose).
+        anim = self._animated.get("player")
+        sil_key = ("enemy", "player")
+        if getattr(p, "dying", False):
+            thrust = self._animated.get("player_thrust_v1")
+            if thrust is not None and thrust.loaded:
+                anim = thrust
+                sil_key = ("enemy", "player_thrust_v1")
+        if anim is None or not anim.loaded:
             cx, cy = int(p.x + ox), int(p.y + oy)
             pygame.draw.polygon(surface, (90, 220, 120),
                                 [(cx - 6, cy - 5), (cx - 6, cy + 5), (cx + 6, cy)])
             return
-        self._blit_centered(surface, sprite.get_current_surface(),
+        # Silhouette outline behind the player.
+        silhouettes = self._silhouettes.get(sil_key)
+        if silhouettes is None:
+            silhouettes = self._silhouettes.get(("enemy", "player"))
+        if silhouettes is not None:
+            sil = silhouettes[anim._index]
+            self._blit_centered(surface, sil, p.x + ox, p.y + oy)
+        self._blit_centered(surface, anim.get_current_surface(),
                             p.x + ox, p.y + oy)
 
     def _draw_enemy_trail(self, surface, e, ox, oy) -> None:
@@ -679,7 +795,11 @@ class GameplayScene(Scene):
         color = e.flame.base_color if e.flame else (255, 200, 100)
         n = len(trail)
         # Walk oldest -> newest-1 (skip the last/current entry).
-        for i, (tx, ty) in enumerate(trail[:-1]):
+        # Materialize to a list because _trail is a collections.deque and
+        # deques don't support slicing. Without this, trail[:-1] raises
+        # TypeError: sequence index must be integer, not 'slice' and the
+        # game crashes the first frame an enemy is on screen.
+        for i, (tx, ty) in enumerate(list(trail)[:-1]):
             # Age factor: 0 = oldest, 1 = second-newest
             age = i / max(1, n - 1)
             # Alpha and size: 0 (oldest, invisible) -> full (newest)
@@ -693,13 +813,31 @@ class GameplayScene(Scene):
             surface.blit(glow, (int(tx - radius - 1 + ox), int(ty - radius - 1 + oy)))
 
     def _draw_enemy_sprite(self, surface, e, ox, oy) -> None:
-        # Prefer the per-spawn sprite variant (assigned by the wave
-        # manager), fall back to the kind's default animated sprite.
+        # Pick the right sheet in priority order:
+        #   1. death sheet (dying_timer > 0) — set by take_damage
+        #   2. attack sheet (telegraphing) — set per-frame here
+        #   3. per-spawn sprite variant (assigned by the wave manager)
+        #   4. kind default (the "scout"/"cruiser"/... kind alias)
         anim = None
-        if e.sprite_name:
+        sil_key = None
+        if getattr(e, "dying_timer", 0.0) > 0.0:
+            death_name = f"enemy_{e.kind}_death_v1"
+            anim = self._animated.get(death_name)
+            if anim is not None:
+                sil_key = ("enemy", death_name)
+        if anim is None and e.telegraphing:
+            attack_name = f"enemy_{e.kind}_attack_v1"
+            anim = self._animated.get(attack_name)
+            if anim is not None:
+                sil_key = ("enemy", attack_name)
+        if anim is None and e.sprite_name:
             anim = self._animated.get(e.sprite_name)
+            if anim is not None:
+                sil_key = ("enemy", e.sprite_name)
         if anim is None:
             anim = self._animated.get(e.kind)
+            if anim is not None:
+                sil_key = ("enemy", e.kind)
         sprite = anim.get_current_surface() if anim is not None else None
         if sprite is None:
             cx, cy = int(e.x + ox), int(e.y + oy)
@@ -714,7 +852,30 @@ class GameplayScene(Scene):
             size = 14 if e.kind in ("heavy", "bomber") else 10
             pygame.draw.rect(surface, color, (cx - size // 2, cy - size // 2, size, size))
             return
-        self._blit_centered(surface, sprite, e.x + ox, e.y + oy)
+        # Silhouette outline (black backdrop, 1.08x). Look up by the
+        # actual key that has the silhouette, which can differ from
+        # the anim's name (e.g. the kind alias for fallback).
+        if sil_key is None or sil_key not in self._silhouettes:
+            sil_key = ("enemy", e.kind)
+        silhouettes = self._silhouettes.get(sil_key)
+        # 2026-09-06 polish: while the enemy is in the death-fall
+        # sequence, rotate both the silhouette and the sprite by
+        # `e.dying_rotation` so the ship visibly tumbles as it
+        # drops. The rotation is bounded by the int cast in
+        # pygame.transform.rotate (which only takes ints), so we
+        # take it mod 360 to keep the value small.
+        is_dying = getattr(e, "dying_timer", 0.0) > 0.0
+        if is_dying:
+            angle = int(e.dying_rotation) % 360
+            if silhouettes is not None:
+                sil = silhouettes[anim._index]
+                self._blit_centered_rotated(surface, sil, e.x + ox, e.y + oy, angle)
+            self._blit_centered_rotated(surface, sprite, e.x + ox, e.y + oy, angle)
+        else:
+            if silhouettes is not None:
+                sil = silhouettes[anim._index]
+                self._blit_centered(surface, sil, e.x + ox, e.y + oy)
+            self._blit_centered(surface, sprite, e.x + ox, e.y + oy)
         # Telegraph flash: a soft yellow halo behind the sprite when
         # the enemy is about to fire. Drawn AFTER the sprite so the
         # halo frames the silhouette.
@@ -765,6 +926,21 @@ class GameplayScene(Scene):
             pygame.draw.polygon(surface, (160, 140, 110), pts)
             pygame.draw.polygon(surface, (220, 100, 60), pts, 2)
             return
+        # Screen clipping: don't draw the boss if its position is
+        # outside the viewport bounds. The entry starts at x=480
+        # which keeps the boss just barely visible at the very start;
+        # the silhouette below would otherwise show as a clipped
+        # black bar at the screen edge.
+        sw, sh = surface.get_size()
+        half_w, half_h = sprite.get_width() // 2, sprite.get_height() // 2
+        cx, cy = int(b.x + ox), int(b.y + oy)
+        if cx + half_w < 0 or cx - half_w > sw or cy + half_h < 0 or cy - half_h > sh:
+            return
+        # Black silhouette behind the sprite for a clear outline.
+        silhouettes = self._silhouettes.get(("boss", state))
+        if silhouettes is not None:
+            sil = silhouettes[anim._index]
+            self._blit_centered(surface, sil, b.x + ox, b.y + oy)
         self._blit_centered(surface, sprite, b.x + ox, b.y + oy)
 
     def _pick_boss_animation(self, b) -> str:

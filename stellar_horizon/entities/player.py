@@ -221,10 +221,13 @@ class Player:
 
     def _spawn_bullet(self, bullets_pool) -> None:
         from stellar_horizon.entities.bullet import PlayerBullet
-        # Map weapons to one of 2 SFX so the audio has variety without
-        # 10 distinct shoot sounds. Light weapons use "shoot" (short
-        # high-freq blip), heavy weapons use "shoot_charged" (longer
-        # mid-freq thump).
+        # 2026-09-06 polish: dedicated `laser_fire` SFX (fast sawtooth
+        # pitch drop) plays on every shot. The legacy `shoot` /
+        # `shoot_charged` blips are still dispatched right after for
+        # per-weapon variety (light vs heavy feel) — the synth plays
+        # them on top of the laser, blending into a richer "zap".
+        from stellar_horizon.audio import sfx
+        sfx.play_event("laser_fire")
         sfx_name = "shoot_charged" if self.weapon in (3, 5, 7) else "shoot"
         for b in bullets_pool:
             if not b.alive:

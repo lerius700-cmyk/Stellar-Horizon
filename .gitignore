@@ -56,3 +56,8 @@ stellar_horizon_crash.log
 # stellar_horizon/_systems/).
 /assets/
 /stellar_horizon/_vendor/
+
+# Test artifacts (error/output dumps from background tasks)
+.err
+.out
+

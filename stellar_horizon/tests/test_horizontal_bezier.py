@@ -80,7 +80,11 @@ def test_path_zigzag_exit_top_ends_off_screen_top():
 def test_path_boss_entry_starts_off_screen_right():
     p = path_boss_entry()
     start = p.position_at(0.0)
-    assert start.x > 480
+    # 2026-09-06 fix: entry start moved from x=540 to x=480 so the
+    # 80x80 boss doesn't visibly extend off-screen during the entry.
+    # The path still starts to the right of the viewport (480) so the
+    # boss enters from off-screen.
+    assert start.x > 470
 
 
 def test_path_boss_entry_ends_at_arena():
