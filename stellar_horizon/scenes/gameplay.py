@@ -821,10 +821,14 @@ class GameplayScene(Scene):
         anim = None
         sil_key = None
         if getattr(e, "dying_timer", 0.0) > 0.0:
-            death_name = f"enemy_{e.kind}_death_v1"
-            anim = self._animated.get(death_name)
+            # 2026-09-06 destruction-fall: the dying sheet
+            # transitions from death_v1 (explosion burst) to
+            # the ship's base sheet after 0.15s. current_dying_sheet
+            # returns the right one for the current dying_elapsed.
+            sheet_name = e.current_dying_sheet()
+            anim = self._animated.get(sheet_name)
             if anim is not None:
-                sil_key = ("enemy", death_name)
+                sil_key = ("enemy", sheet_name)
         if anim is None and e.telegraphing:
             attack_name = f"enemy_{e.kind}_attack_v1"
             anim = self._animated.get(attack_name)
