@@ -81,6 +81,24 @@ class FxLayer:
         for _ in range(n_smoke):
             self.engine.emit(P_SMOKE, x, y, 0, 0)
 
+    def emit_smoke(self, x: float, y: float) -> None:
+        """Emit a single smoke particle for the destruction-fall
+        smoke trail. Slow upward drift, small random horizontal
+        velocity, gray color, 0.6s lifetime.
+
+        The engine's P_SMOKE config handles the visual evolution
+        (expands, fades, rises via accel). We just need to set
+        the initial conditions and override the color.
+        """
+        self.engine.emit(
+            P_SMOKE,
+            x, y,
+            random.uniform(-3.0, 3.0),   # vx: small horizontal drift
+            random.uniform(-12.0, -4.0), # vy: slight upward initial kick
+            color=(180, 180, 180),       # gray, not engine default (120, 120, 140)
+            life=0.6,
+        )
+
     # --- Visual polish VFX (choreographed enemy movement) ---
 
     def emit_trail(self, x: float, y: float,
