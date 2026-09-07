@@ -389,3 +389,32 @@ def test_dying_random_omega_within_range():
     negatives = sum(1 for o in omegas if o < 0)
     assert positives > 5, f"only {positives} positive omegas in 50 samples"
     assert negatives > 5, f"only {negatives} negative omegas in 50 samples"
+
+
+def test_dying_death_sheet_first_then_idle():
+    # During the first 0.15s of the death sequence the death
+    # sheet (the explosion) is shown. After that, the ship's
+    # IDLE/base sheet (its original sprite) takes over so the
+    # player can see the ship itself tumbling, not a static
+    # explosion sprite being rotated.
+    e = Enemy()
+    e.kind = "scout"
+    e.on_spawn()
+    e.hp = 1
+    e.sprite_name = "enemy_scout_v3"
+    e.take_damage(1)
+    # t=0: death sheet
+    assert e.current_dying_sheet() == "enemy_scout_death_v1", (
+        f"at t=0 expected death sheet, got {e.current_dying_sheet()}"
+    )
+    # t=0.10s: still in burst window
+    e.update(0.10, FakePlayer())
+    assert e.current_dying_sheet() == "enemy_scout_death_v1", (
+        f"at t=0.10 expected death sheet, got {e.current_dying_sheet()}"
+    )
+    # t=0.20s: burst done, base sheet takes over
+    e.update(0.10, FakePlayer())
+    assert e.current_dying_sheet() == "enemy_scout_v3", (
+        f"at t=0.20 expected base sheet 'enemy_scout_v3', "
+        f"got {e.current_dying_sheet()}"
+    )

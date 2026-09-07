@@ -356,6 +356,22 @@ class Enemy:
             if self.fx is not None:
                 self.fx.emit_explosion_typed(self.kind, self.x, self.y)
 
+    def current_dying_sheet(self) -> str:
+        """Return the sprite name to display during the death
+        sequence. The first 0.15s shows the death sheet (the
+        explosion burst). After that, the ship's base sheet
+        takes over so the player sees the actual ship
+        tumbling down, not a static explosion sprite being
+        rotated.
+
+        Falls back to the kind's v1 variant if base_sprite_name
+        was never set (e.g. legacy enemy without an explicit
+        spawner-assigned sprite).
+        """
+        if self.dying_elapsed < _ENEMY_DYING_DEATH_SHEET_S:
+            return f"enemy_{self.kind}_death_v1"
+        return self.base_sprite_name or f"enemy_{self.kind}_v1"
+
     def hitbox(self) -> pygame.Rect:
         if self.kind in (EnemyKind.HEAVY, EnemyKind.BOMBER):
             return pygame.Rect(int(self.x - 9), int(self.y - 6), 18, 12)
