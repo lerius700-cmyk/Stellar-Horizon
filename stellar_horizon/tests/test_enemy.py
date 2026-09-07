@@ -365,3 +365,27 @@ def test_dying_omega_decays_with_drag():
         f"start {omega_initial} end {e.dying_omega} (expected ~{expected:.1f})"
     )
     assert e.dying_omega > 0, "omega should keep its sign under drag"
+
+
+def test_dying_random_omega_within_range():
+    # The initial omega after take_damage is sampled uniformly
+    # from [-180, +180] deg/s. Over 50 samples we should see
+    # both positive and negative values, all in range.
+    omegas = []
+    for _ in range(50):
+        e = Enemy()
+        e.kind = "scout"
+        e.on_spawn()
+        e.hp = 1
+        e.take_damage(1)
+        omegas.append(e.dying_omega)
+    # All in range
+    for omega in omegas:
+        assert -180.0 <= omega <= 180.0, (
+            f"omega {omega} out of range [-180, 180]"
+        )
+    # Both signs present (random is working)
+    positives = sum(1 for o in omegas if o > 0)
+    negatives = sum(1 for o in omegas if o < 0)
+    assert positives > 5, f"only {positives} positive omegas in 50 samples"
+    assert negatives > 5, f"only {negatives} negative omegas in 50 samples"
