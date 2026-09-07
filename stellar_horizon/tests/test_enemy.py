@@ -418,3 +418,40 @@ def test_dying_death_sheet_first_then_idle():
         f"at t=0.20 expected base sheet 'enemy_scout_v3', "
         f"got {e.current_dying_sheet()}"
     )
+
+
+def test_dying_emits_smoke_when_fx_set():
+    # A dying enemy with an injected FxLayer reference should
+    # emit P_SMOKE particles during update(). We use a tiny
+    # fake FxLayer that counts calls.
+    class _FakeFx:
+        def __init__(self):
+            self.smokes = []
+        def emit_smoke(self, x, y):
+            self.smokes.append((x, y))
+        # take_damage() also calls emit_explosion_typed; provide a
+        # no-op so the test can focus on smoke emission.
+        def emit_explosion_typed(self, kind, x, y):
+            pass
+
+    e = Enemy()
+    e.kind = "scout"
+    e.on_spawn()
+    e.hp = 1
+    e.x = 100.0
+    e.y = 50.0
+    e.fx = _FakeFx()
+    e.take_damage(1)
+    for _ in range(10):
+        e.update(0.05, FakePlayer())
+    # 10 ticks of 0.05s with throttle 1-in-2 means 5 smoke emits
+    # (the throttle increments every tick and emits on even
+    # ticks; 10 ticks / 2 = 5 emits).
+    assert len(e.fx.smokes) >= 3, (
+        f"expected >= 3 smoke emits in 10 ticks, got {len(e.fx.smokes)}"
+    )
+    # The smoke positions should be near the ship's position
+    # (within a few pixels — gravity moves the ship down).
+    for sx, sy in e.fx.smokes:
+        assert abs(sx - e.x) < 50
+        assert sy >= 30  # never above the spawn point

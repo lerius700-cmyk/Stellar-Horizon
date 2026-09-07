@@ -208,6 +208,13 @@ class Enemy:
             # Integrate position.
             self.y += self.vy * dt
             self.x += self.vx * dt
+            # Throttled smoke emission: 1 every 2 frames
+            # so a long fall doesn't flood the particle
+            # system.
+            if self.fx is not None:
+                self._smoke_throttle = (self._smoke_throttle + 1) % 2
+                if self._smoke_throttle == 0:
+                    self.fx.emit_smoke(self.x, self.y)
             if self.y > _ENEMY_DYING_OFFSCREEN_Y or self.dying_timer <= 0.0:
                 self.dying_timer = 0.0
                 self.alive = False
