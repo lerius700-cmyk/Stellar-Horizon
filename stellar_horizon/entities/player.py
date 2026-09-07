@@ -240,15 +240,21 @@ class Player:
         sfx_name = "shoot_charged" if self.weapon in (3, 5, 7) else "shoot"
         for b in bullets_pool:
             if not b.alive:
-                b.x = self.x + self.BULLET_OFFSET_X
-                b.y = self.y
-                b.vx = self.WEAPON_BULLET_SPEED[self.weapon]
-                b.vy = 0.0
-                # Stamp spawn_time + weapon so fx/bullet_vfx.compute()
-                # can pick the right animation per bullet.
-                b.spawn_time = self._now
-                b.weapon = self.weapon
-                b.alive = True
+                # 2026-09-06 visual polish v2: delegate the per-shot
+                # state reset to PlayerBullet.spawn(). This is the
+                # Task 5 review fix — the previous direct field
+                # mutations didn't set weapon_archetype or reset
+                # frame_elapsed/frame_index, so the 6-frame sheet
+                # animation would never start on a re-spawned pool
+                # slot.
+                b.spawn(
+                    x=self.x + self.BULLET_OFFSET_X,
+                    y=self.y,
+                    vx=self.WEAPON_BULLET_SPEED[self.weapon],
+                    vy=0.0,
+                    weapon=self.weapon,
+                    spawn_time=self._now,
+                )
                 # Fire SFX (best-effort: no-op if audio is down).
                 from stellar_horizon.audio import sfx
                 sfx.play_event(sfx_name)

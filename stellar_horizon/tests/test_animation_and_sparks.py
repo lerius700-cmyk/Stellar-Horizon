@@ -72,11 +72,13 @@ def test_gameplay_scene_loads_sprites_split():
     sprites_v2/. New layout:
     - _animated: 5 player variants + 20 enemy variants (4 scout, 4
       cruiser, 3 heavy, 3 bomber, 3 ufo, 3 kamikaze) + 2 legacy
-      bullets = 27 total. 10 frames per sheet at 12 fps, 64x64.
+      bullets + 5 laser sheets (laser_01..laser_05, 6 frames each
+      at 12 fps, 29x7) = 32 total. Player/enemy variants are
+      10 frames per sheet at 12 fps, 29x29.
     - _boss_anims: 6 states (IDLE, TELEGRAPH, CHARGE, DYING +
-      2 alternates), 10 frames per sheet at 8 fps, 96x96.
+      2 alternates), 10 frames per sheet at 8 fps, 72x72.
     - _laser_sprites: 5 single-frame first-frames of the 5 laser
-      sheets (48x16). Used for HUD display + VFX halo centering.
+      sheets (29x7). Used for HUD display + VFX halo centering.
     """
     from stellar_horizon.audio.midi_player import MidiPlayer
     from stellar_horizon.scenes.gameplay import GameplayScene
@@ -88,8 +90,9 @@ def test_gameplay_scene_loads_sprites_split():
     # Animated cache: 5 player + 20 enemy (per _ENEMY_SPRITE_CYCLE) +
     # 2 legacy bullets + 7 kind-name aliases (scout, cruiser, heavy,
     # bomber, ufo, kamikaze, player) + 13 action sheets (1 player
-    # thrust + 6 enemy attack + 6 enemy death) = 47.
-    assert len(s._animated) == 47
+    # thrust + 6 enemy attack + 6 enemy death) + 5 laser sheets
+    # (laser_01..laser_05) = 52.
+    assert len(s._animated) == 52
     # 5 player variants.
     for n in ("player_v1", "player_v2", "player_v3", "player_v4", "player_v5"):
         assert n in s._animated
@@ -118,11 +121,16 @@ def test_gameplay_scene_loads_sprites_split():
     # The 7 kind-name aliases ARE present.
     for n in ("scout", "cruiser", "heavy", "bomber", "ufo", "kamikaze", "player"):
         assert n in s._animated
-    # Lasers MUST NOT be in the animated cache (they're single-frame
-    # first-frames in _laser_sprites).
-    for n in (f"laser_{i:02d}" for i in range(1, 11)):
+    # Lasers ARE in the animated cache (2026-09-06 polish v2):
+    # 5 sheets (laser_01..laser_05), 6 frames each at 12 fps, 29x7.
+    # The single-frame first-frame is also kept in _laser_sprites
+    # for the HUD display + halo centering.
+    for n in (f"laser_{i:02d}" for i in range(1, 6)):
+        assert n in s._animated
+    # laser_06..laser_10 don't exist (only 5 archetypes).
+    for n in (f"laser_{i:02d}" for i in range(6, 11)):
         assert n not in s._animated
-    # Single-frame laser cache: 5 sprites (one per weapon).
+    # Single-frame laser cache: 5 sprites (one per weapon archetype).
     assert len(s._laser_sprites) == 5
     for n in (f"laser_{i:02d}" for i in range(1, 6)):
         assert n in s._laser_sprites

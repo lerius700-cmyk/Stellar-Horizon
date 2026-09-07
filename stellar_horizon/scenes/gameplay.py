@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+import random
 from pathlib import Path
 
 import pygame
@@ -15,7 +16,10 @@ from stellar_horizon.entities.bullet import EnemyBullet, PlayerBullet
 from stellar_horizon.entities.enemy import Enemy
 from stellar_horizon.entities.player import Player
 from stellar_horizon.entities.powerup import PowerUp, PowerUpKind, roll_enemy_drop
-from stellar_horizon.fx.bullet_vfx import compute as compute_bullet_vfx
+from stellar_horizon.fx.bullet_vfx import (
+    WEAPON_VFX_PARAMS,
+    compute as compute_bullet_vfx,
+)
 from stellar_horizon.fx.dust import DustStream
 from stellar_horizon.fx.particles import FxLayer
 from stellar_horizon.fx.screen_shake import ScreenShake
@@ -172,12 +176,12 @@ class GameplayScene(Scene):
         kept on disk for reference but are no longer loaded.
 
         Frame counts and dimensions:
-          - Player + 4 player variants: 10 frames @ 12 fps, 64x64
+          - Player + 4 player variants: 10 frames @ 12 fps, 29x29
           - 20 enemy variants (4 scout, 4 cruiser, 3 heavy, 3 bomber,
-            3 ufo, 3 kamikaze): 10 frames @ 12 fps, 64x64
+            3 ufo, 3 kamikaze): 10 frames @ 12 fps, 29x29
           - 6 boss states (idle, telegraph, charge, dying, alt_a, alt_b):
-            10 frames @ 8 fps, 96x96
-          - 5 lasers: 10 frames @ 14 fps, 48x16 (alpha-pulse animation)
+            10 frames @ 8 fps, 72x72
+          - 5 lasers: 6 frames @ 12 fps, 29x7 (alpha-pulse animation)
         """
         sprite_dir = self.assets_dir / "sprites_v2"
         # All names to load as animated sheets. Player + 4 player
@@ -272,12 +276,16 @@ class GameplayScene(Scene):
             # Pre-compute silhouette for the boss (per state, since
             # the boss can be in different animations).
             self._silhouettes[("boss", state)] = self._make_silhouette_set(anim)
-        # Laser sheets: 10 frames at 14 fps, 29x7 (alpha-pulse for
+        # Laser sheets: 6 frames at 12 fps, 29x7 (alpha-pulse for
         # "energy" read). _laser_sprites stores the FIRST FRAME of
         # each sheet (29x7) so the HUD and bullet draw code can use
         # them as static single-frame sprites for halo centering.
         # 2026-09-06: shrunk from 32x8 to 29x7 to match the 10%
         # global shrink.
+        # 2026-09-06 polish v2: the full 6-frame sheet is also
+        # cached in self._animated under the same laser_NN key, so
+        # the bullet render can pull `sheet._frames[b.frame_index]`
+        # for the 6-frame animation cycle.
         self._laser_sprites.clear()
         for i in range(1, 6):
             name = f"laser_{i:02d}"
@@ -293,6 +301,14 @@ class GameplayScene(Scene):
                 surf = pygame.Surface((1, 1), pygame.SRCALPHA)
                 surf.fill((255, 0, 255, 255))
             self._laser_sprites[name] = surf
+            # 2026-09-06 polish v2: also load the full 6-frame sheet
+            # into self._animated for the bullet render to pick up
+            # via sheet._frames[b.frame_index]. 12 fps matches the
+            # other player-side animations.
+            anim = AnimatedSprite(
+                str(path), 29, 7, 6, fps=12.0,
+            )
+            self._animated[name] = anim
 
     def _pick_enemy_sprite(self, kind: str) -> str | None:
         """Return a sprite name for an enemy of the given kind.
@@ -400,6 +416,29 @@ class GameplayScene(Scene):
                            now=self._elapsed)
         for b in self.player_bullets:
             if b.alive:
+                # 2026-09-06 visual polish v2: per-weapon bullet
+                # particles. Each frame, stochastically emit a
+                # particle of the kind/color/intensity defined in
+                # WEAPON_VFX_PARAMS for the bullet's weapon.
+                # `particles_per_frame` is the average count, so we
+                # roll `random < particles_per_frame / 60` per frame
+                # (60 fps is the target frame rate). The
+                # `particles_per_frame == 0` convention is the no-op
+                # marker (white piercing has no trail).
+                weapon_id = getattr(b, "weapon", 0)
+                if 0 <= weapon_id < len(WEAPON_VFX_PARAMS) \
+                        and self.fx is not None:
+                    params = WEAPON_VFX_PARAMS[weapon_id]
+                    if params.particles_per_frame > 0.0:
+                        intensity = (params.trail_intensity
+                                     * params.particles_per_frame)
+                        if random.random() < params.particles_per_frame / 60.0:
+                            self.fx.emit_bullet_particle(
+                                b.x, b.y,
+                                kind=params.particle_kind,
+                                color=params.particle_color,
+                                intensity=intensity,
+                            )
                 b.update(dt)
         # Wave manager + enemies
         if self.wave_manager and not self.boss_active:
@@ -1024,20 +1063,32 @@ class GameplayScene(Scene):
             surface.blit(halo, (int(px - radius), int(py - radius)))
 
     def _draw_player_bullet_sprite(self, surface, b, ox, oy) -> None:
-        # Use the weapon that fired this bullet (so mid-flight
-        # weapon switches don't repaint already-spawned bullets) —
-        # fall back to the player's current weapon for legacy bullets.
-        weapon_idx = getattr(b, "weapon", self.player.weapon)
-        weapon_name = f"laser_{weapon_idx + 1:02d}"
-        sprite = self._laser_sprites.get(weapon_name)
-        if sprite is None:
-            sprite = self._laser_sprites.get("laser_01")
-        if sprite is None:
+        # 2026-09-06 visual polish v2: pull the weapon's archetype
+        # (0..4) and look up the matching 6-frame sheet in
+        # self._animated. archetype 0 -> laser_01, ..., archetype 4
+        # -> laser_05. Fall back to the legacy single-frame
+        # _laser_sprites[laser_NN] if the sheet is missing (e.g.
+        # the asset failed to load) so the bullet still renders.
+        archetype = getattr(b, "weapon_archetype", 0)
+        sheet_name = f"laser_{archetype + 1:02d}"
+        sheet = self._animated.get(sheet_name)
+        sub = None
+        if sheet is not None and sheet.loaded:
+            frame_idx = getattr(b, "frame_index", 0) % max(1, sheet.frame_count)
+            if 0 <= frame_idx < len(sheet._frames):
+                sub = sheet._frames[frame_idx]
+        # Code-driven VFX: alpha pulse, scale pulse, soft halo.
+        vfx = compute_bullet_vfx(b, self._elapsed)
+        # Fallback to the static single-frame sprite (29x7 first
+        # frame) if the animated sheet isn't available.
+        if sub is None:
+            sub = self._laser_sprites.get(sheet_name)
+        if sub is None:
+            sub = self._laser_sprites.get("laser_01")
+        if sub is None:
             pygame.draw.rect(surface, (255, 240, 100),
                              (int(b.x - 6 + ox), int(b.y - 2 + oy), 12, 4))
             return
-        # Code-driven VFX: alpha pulse, scale pulse, soft halo.
-        vfx = compute_bullet_vfx(b, self._elapsed)
         cx, cy = int(b.x + ox), int(b.y + oy)
         # Halo first (behind the sprite). Drawn as a soft circle on a
         # per-pixel alpha surface so it blends with the background.
@@ -1048,16 +1099,6 @@ class GameplayScene(Scene):
             pygame.draw.circle(halo, (*vfx.halo_color, vfx.halo_alpha),
                                (rad, rad), rad)
             surface.blit(halo, (cx - rad, cy - rad))
-        # Sprite with alpha (and optional scale). If the sprite is a sheet
-        # (width > single-frame width), extract the current frame.
-        frame = getattr(b, "frame", 0)
-        if sprite.get_width() > 32 and sprite.get_width() % 4 == 0:
-            # Looks like a 4-frame sheet; extract the current frame
-            frame_w = sprite.get_width() // 4
-            sub = sprite.subsurface(pygame.Rect(frame * frame_w, 0,
-                                               frame_w, sprite.get_height()))
-        else:
-            sub = sprite
         if vfx.scale != 1.0:
             sw, sh = sub.get_width(), sub.get_height()
             nw, nh = max(1, int(round(sw * vfx.scale))), \
