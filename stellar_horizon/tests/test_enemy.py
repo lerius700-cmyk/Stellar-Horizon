@@ -316,3 +316,52 @@ def test_dying_applies_gravity_monotonically():
     assert vy_samples[-1] > vy_samples[0], (
         f"vy should grow under gravity: start {vy_samples[0]} end {vy_samples[-1]}"
     )
+
+
+def test_dying_drag_slows_horizontal_velocity():
+    # Linear drag should decay vx exponentially. Since vx is
+    # zeroed on death in the new physics, force a vx via
+    # take_damage + manual override. The integration uses
+    # math.exp(-DRAG_LINEAR * dt) so vx should drop by a
+    # predictable factor.
+    e = Enemy()
+    e.kind = "scout"
+    e.on_spawn()
+    e.hp = 1
+    e.take_damage(1)
+    e.vx = 100.0  # force-set after take_damage
+    vx_initial = e.vx
+    e.update(0.5, FakePlayer())
+    # After 0.5s with DRAG_LINEAR=1.8, the multiplier is
+    # exp(-1.8 * 0.5) = exp(-0.9) ≈ 0.406. So vx should be
+    # about 40% of initial. Allow a 20% margin to avoid
+    # brittleness.
+    expected = vx_initial * 0.4066
+    assert e.vx < vx_initial * 0.6, (
+        f"vx should decay significantly under drag: "
+        f"start {vx_initial} end {e.vx} (expected ~{expected:.1f})"
+    )
+    assert e.vx > 0, "vx should keep its sign under drag"
+
+
+def test_dying_omega_decays_with_drag():
+    # Angular drag should decay omega exponentially. The sign
+    # of omega is preserved (rotation direction doesn't
+    # reverse), only its magnitude decreases.
+    e = Enemy()
+    e.kind = "scout"
+    e.on_spawn()
+    e.hp = 1
+    e.take_damage(1)
+    e.dying_omega = 300.0  # force-set after take_damage
+    omega_initial = e.dying_omega
+    e.update(2.0, FakePlayer())
+    # After 2s with DRAG_ANGULAR=0.6, multiplier is
+    # exp(-0.6 * 2) = exp(-1.2) ≈ 0.301. So omega should be
+    # about 30% of initial.
+    expected = omega_initial * 0.3012
+    assert abs(e.dying_omega) < abs(omega_initial) * 0.5, (
+        f"|omega| should decay under angular drag: "
+        f"start {omega_initial} end {e.dying_omega} (expected ~{expected:.1f})"
+    )
+    assert e.dying_omega > 0, "omega should keep its sign under drag"

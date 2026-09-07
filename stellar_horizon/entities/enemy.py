@@ -199,8 +199,11 @@ class Enemy:
             self.dying_elapsed += dt
             # Apply gravity to vertical velocity.
             self.vy += _ENEMY_DYING_GRAVITY_PX_S2 * dt
-            # Drag will be applied in a later task. For now,
-            # vx and omega are unchanged.
+            # Exponential drag on linear velocity (scaled by
+            # 1/s; the integration uses math.exp so the
+            # formula is frame-rate independent).
+            self.vx *= math.exp(-_ENEMY_DYING_DRAG_LINEAR * dt)
+            self.dying_omega *= math.exp(-_ENEMY_DYING_DRAG_ANGULAR * dt)
             self.dying_rotation += self.dying_omega * dt
             # Integrate position.
             self.y += self.vy * dt
