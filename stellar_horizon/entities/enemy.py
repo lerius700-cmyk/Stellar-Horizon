@@ -65,12 +65,10 @@ _ENEMY_TRAIL_INTENSITY = {
 # 2026-09-06 polish: when an enemy dies it now falls to the
 # ground instead of locking in place. The dying_timer drives the
 # fall duration, but the ship also gets purged early if it leaves
-# the bottom of the viewport. Tuned in destruction-fall v2 so a
+# the bottom of the viewport. With the gravity constant below, a
 # heavy/bomber that dies at y=80 reaches the ground (~y=270) in
 # ~0.8s, matching the death-sheet loop length.
 _ENEMY_DYING_GRAVITY_PX_S2 = 500.0   # px/s^2, tuned in destruction-fall v2
-_ENEMY_DYING_HORIZONTAL_DRIFT = 0.35  # multiplier on vx while falling
-_ENEMY_DYING_TUMBLE_DEG_PER_S = 240.0 # visual rotation rate
 _ENEMY_DYING_OFFSCREEN_Y = 295.0      # beyond the bottom edge of the 270-tall viewport
 
 # 2026-09-06 destruction-fall polish v2: realistic tumble physics.
@@ -190,7 +188,7 @@ class Enemy:
         # wave manager ONLY when it leaves the bottom of the viewport
         # (y > 295). Killing on timer expiration would yank the
         # tumbling sprite out of view mid-fall, which looked broken
-        # in early playtests. With the chosen gravity (620 px/s^2),
+        # in early playtests. With the chosen gravity (500 px/s^2),
         # a ship killed at y=40 reaches the offscreen line in ~0.9s,
         # so the 1.0s timer is the safety net for low-altitude kills
         # that reach the ground before the timer expires.

@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import sys
 from pathlib import Path
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
@@ -29,17 +28,10 @@ import pygame
 from stellar_horizon.audio.midi_player import MidiPlayer
 from stellar_horizon.entities.enemy import Enemy
 from stellar_horizon.scenes.gameplay import GameplayScene
-from stellar_horizon.settings import INTERNAL_W, INTERNAL_H
 
 
 # 6 enemy kinds in display order
 KINDS = ("scout", "cruiser", "heavy", "bomber", "ufo", "kamikaze")
-
-# 3 columns x 12 rows. 2 kinds per column. Each cell is 160 x 60 px.
-# Wait, that's not 6 columns. Let me redo: 6 columns (one per kind) x
-# 12 rows (one per time). Cell is 80 x 22 px — too small. Use 3 columns
-# x 12 rows with 2 kinds per column? Each cell = 160 wide x 22 tall.
-# Still tall-thin. Better: 6 columns x 6 rows. Show 6 timestamps, not 12.
 
 FRAMES = 6  # 0.0, 0.1, 0.2, 0.3, 0.4, 0.5 seconds (covers most of the fall)
 CELL_W = 80

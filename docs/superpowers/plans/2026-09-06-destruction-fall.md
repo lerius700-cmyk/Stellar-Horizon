@@ -151,7 +151,15 @@ def test_dying_applies_gravity_monotonically():
 Run: `cd D:\AI\stellar-horizon; $env:PYTHONPATH = $PWD; .\.venv\Scripts\python.exe -m pytest stellar_horizon/tests/test_enemy.py::test_dying_zeroes_momentum stellar_horizon/tests/test_enemy.py::test_dying_applies_gravity_monotonically -v`
 Expected: BOTH tests FAIL. `test_dying_zeroes_momentum` fails because the current code doesn't zero vx/vy. `test_dying_applies_gravity_monotonically` likely fails because the ship flies off in the previous direction.
 
-- [ ] **Step 3: Modify `take_damage` to zero momentum + new random omega + track elapsed**
+- [ ] **Step 3: Migrate gravity constant + Modify `take_damage` to zero momentum + new random omega + track elapsed**
+
+**IMPORTANT: Gravity constant migration.** The brief for Task 1 left `_ENEMY_DYING_GRAVITY_PX_S2 = 620.0` in place (declared in the baseline `6c3316b` for the v1 destruction animation). The spec asks for `500.0`. This task is where the migration happens — the gravity value change MUST be atomic with the `update()` / `take_damage()` rewrite that consumes it. Change the value in the existing block:
+
+```python
+_ENEMY_DYING_GRAVITY_PX_S2 = 500.0  # was 620.0 (v1 destruction); 500 matches spec
+```
+
+Also remove the now-redundant NOTE comment that Task 1 added.
 
 In `Enemy.take_damage` (around line 267), REPLACE the block inside `if self.hp <= 0:` (specifically the `if self.dying_timer <= 0.0:` block) with:
 

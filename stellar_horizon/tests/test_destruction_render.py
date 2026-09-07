@@ -33,13 +33,11 @@ def test_fxlayer_emit_smoke_overrides_color_to_gray():
     smokes = [p for p in fx.particles if p.kind == P_SMOKE]
     assert len(smokes) == 1
     p = smokes[0]
-    # Allow the engine to override the color in its init logic,
-    # but the FxLayer.emit_smoke should pass gray. If the engine
-    # overwrites the color in the update loop, this test will
-    # need adjustment. For now, just verify the position and
-    # the fact that A particle was emitted with the smoke kind.
     assert p.x == 100.0
     assert p.y == 50.0
+    assert p.color == (180, 180, 180), (
+        f"emit_smoke should override color to gray, got {p.color}"
+    )
 
 
 def test_destruction_render_produces_visible_ship_after_burst():
