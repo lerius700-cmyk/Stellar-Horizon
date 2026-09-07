@@ -428,16 +428,15 @@ class GameplayScene(Scene):
                 weapon_id = getattr(b, "weapon", 0)
                 if 0 <= weapon_id < len(WEAPON_VFX_PARAMS) \
                         and self.fx is not None:
-                    params = WEAPON_VFX_PARAMS[weapon_id]
-                    if params.particles_per_frame > 0.0:
-                        intensity = (params.trail_intensity
-                                     * params.particles_per_frame)
-                        if random.random() < params.particles_per_frame / 60.0:
+                    vfx = WEAPON_VFX_PARAMS[weapon_id]
+                    if vfx.particles_per_frame > 0.0 and self.fx is not None:
+                        if random.random() < vfx.particles_per_frame / 60.0:
                             self.fx.emit_bullet_particle(
                                 b.x, b.y,
-                                kind=params.particle_kind,
-                                color=params.particle_color,
-                                intensity=intensity,
+                                kind=vfx.particle_kind,
+                                color=vfx.particle_color,
+                                intensity=vfx.trail_intensity,
+                                particles_per_frame=vfx.particles_per_frame,
                             )
                 b.update(dt)
         # Wave manager + enemies

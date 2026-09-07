@@ -120,7 +120,8 @@ class FxLayer:
 
     def emit_bullet_particle(self, x: float, y: float, kind: int,
                               color: tuple[int, int, int] | None = None,
-                              intensity: float = 1.0) -> None:
+                              intensity: float = 1.0,
+                              particles_per_frame: float = 0.0) -> None:
         """Emit a single bullet-trail particle. Caller throttles.
 
         2026-09-06 visual polish v2: every player bullet emits
@@ -129,16 +130,12 @@ class FxLayer:
         orange fireball). The engine kind/color/intensity come
         from the WeaponVFX dataclass for the bullet's weapon.
 
-        `intensity` 0.0 = skip emit (no-op). Note: we do NOT
-        short-circuit on `kind == 0` because P_SPARK == 0 in the
-        engine, and yellow plasma / red pulse / blue ion / pink
-        heart / cyan ice / rainbow all use P_SPARK with
-        intensity > 0. The "no particles" marker is the
-        WeaponVFX's `particles_per_frame == 0` (the caller passes
-        intensity = trail_intensity * particles_per_frame, which
-        is 0 for white piercing).
+        `particles_per_frame <= 0.0` or `intensity <= 0.0` = skip emit
+        (no-op). Pass the per-frame rate from the weapon's
+        WeaponVFX so the no-op marker works without coupling
+        `intensity` to the emission rate.
         """
-        if intensity <= 0.0:
+        if intensity <= 0.0 or particles_per_frame <= 0.0:
             return
         vx = random.uniform(-25, 25)
         vy = random.uniform(-25, 25)
@@ -146,7 +143,7 @@ class FxLayer:
             kind, x, y, vx, vy,
             color=color,
             life=0.2 * intensity,
-            radius=1,
+            radius=max(1, int(2 * intensity)),
         )
 
     def emit_explosion_typed(self, kind: str, x: float, y: float,
