@@ -62,6 +62,7 @@ class Player:
         # VFX (visual polish)
         "flame",  # EngineFlame
         "fx",     # FxLayer reference for trail emission
+        "_trail_thrust_cooldown",  # seconds until next thrust-trail emit
         # Hit/death sequence (visual polish)
         "hit_flash",    # seconds remaining of red flash
         "dying",        # bool - in death animation
@@ -96,6 +97,7 @@ class Player:
         # VFX (visual polish)
         self.flame = EngineFlame(base_color=(100, 200, 255))  # cyan
         self.fx = None  # FxLayer injected by GameplayScene on_enter
+        self._trail_thrust_cooldown: float = 0.0
         # Hit/death sequence state
         self.hit_flash: float = 0.0
         self.dying: bool = False
@@ -155,9 +157,16 @@ class Player:
             self.invulnerable_frames -= 1
         if self.hit_flash > 0:
             self.hit_flash = max(0.0, self.hit_flash - dt)
-        # --- Visual polish: trail particles when thrusting ---
-        if self.alive and self.fx is not None and self.thrusting:
-            self.fx.emit_trail(self.x - 6, self.y, (100, 200, 255), intensity=0.7)
+        # --- Visual polish: 2-layer trail ---
+        # Capa 1: aura tenue SIEMPRE (intensity 0.30, no requiere thrusting)
+        if self.alive and self.fx is not None:
+            self.fx.emit_trail(self.x - 6, self.y, (100, 200, 255), intensity=0.30)
+        # Capa 2: destello brillante al moverse, throttled a ~30Hz
+        if self.alive and self.thrusting and self.fx is not None:
+            self._trail_thrust_cooldown -= dt
+            if self._trail_thrust_cooldown <= 0.0:
+                self.fx.emit_trail(self.x - 6, self.y, (200, 230, 255), intensity=1.0)
+                self._trail_thrust_cooldown = 1.0 / 30.0
 
     def take_hit(self, amount: int = 1) -> None:
         """Apply `amount` damage from a single hit.

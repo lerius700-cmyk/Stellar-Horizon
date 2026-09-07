@@ -190,3 +190,96 @@ def test_player_take_hit_zero_amount_does_nothing(screen_rect):
     p.take_hit(amount=0)
     assert p.lives == 3
     assert p.alive is True
+
+
+# ------------------------------------------------------------------
+# 2026-09-06 visual polish v2: 2-layer player trail
+# (Capa 1 base aura + Capa 2 thrust destello at 30Hz)
+# ------------------------------------------------------------------
+
+def test_player_base_trail_emits_every_frame_when_alive():
+    # 2026-09-06 visual polish v2: the player has a base trail
+    # (intensity 0.30) emitted EVERY frame the player is alive,
+    # regardless of whether it's thrusting. This gives the player
+    # a constant faint aura so it always reads as 'main character'.
+    import pygame
+    pygame.init()
+    try:
+        p = Player(pygame.Rect(0, 0, 480, 270))
+        class _FakeFx:
+            def __init__(self):
+                self.calls = []
+            def emit_trail(self, x, y, color, intensity):
+                self.calls.append((x, y, color, intensity))
+        p.fx = _FakeFx()
+        for _ in range(10):
+            p.update(1/60, _KeysIdle(), [], 0.0)
+        base_calls = [c for c in p.fx.calls if c[3] == 0.30]
+        assert len(base_calls) == 10, (
+            f"expected 10 base trail emits, got {len(base_calls)}"
+        )
+    finally:
+        pygame.quit()
+
+
+def test_player_thrust_trail_emits_at_30hz():
+    # 2026-09-06 visual polish v2: when thrusting, a brighter
+    # trail (intensity 1.0) emits at 30Hz (~once every 2 frames at
+    # 60fps). 60 calls of update(1/60) = 1 second = ~30 emits.
+    import pygame
+    pygame.init()
+    try:
+        p = Player(pygame.Rect(0, 0, 480, 270))
+        class _FakeFx:
+            def __init__(self):
+                self.calls = []
+            def emit_trail(self, x, y, color, intensity):
+                self.calls.append((x, y, color, intensity))
+        p.fx = _FakeFx()
+        for _ in range(60):
+            p.update(1/60, _KeysThrusting(), [], 0.0)
+        thrust_calls = [c for c in p.fx.calls if c[3] == 1.0]
+        # 30Hz * 1s = 30 emits. Allow 25-35 for floating-point drift.
+        assert 25 <= len(thrust_calls) <= 35, (
+            f"expected ~30 thrust trail emits in 60 frames, "
+            f"got {len(thrust_calls)}"
+        )
+    finally:
+        pygame.quit()
+
+
+def test_player_two_layers_independent_counts():
+    # 2026-09-06 visual polish v2: the two layers are independent.
+    # With thrusting=True, both layers fire each frame. With
+    # thrusting=False, only the base layer fires.
+    import pygame
+    pygame.init()
+    try:
+        p = Player(pygame.Rect(0, 0, 480, 270))
+        class _FakeFx:
+            def __init__(self):
+                self.calls = []
+            def emit_trail(self, x, y, color, intensity):
+                self.calls.append((x, y, color, intensity))
+        p.fx = _FakeFx()
+        for _ in range(10):
+            p.update(1/60, _KeysIdle(), [], 0.0)
+        idle_base = len([c for c in p.fx.calls if c[3] == 0.30])
+        idle_thrust = len([c for c in p.fx.calls if c[3] == 1.0])
+        assert idle_base == 10, f"idle base should be 10, got {idle_base}"
+        assert idle_thrust == 0, f"idle thrust should be 0, got {idle_thrust}"
+    finally:
+        pygame.quit()
+
+
+# Helper classes — only add if they don't already exist in the file
+class _KeysIdle:
+    """A keys-like object that returns False for movement keys."""
+    def __getitem__(self, key):
+        return False
+
+class _KeysThrusting:
+    """A keys-like object that returns True for K_d (thrusting right)."""
+    def __getitem__(self, key):
+        import pygame
+        return key == pygame.K_d
