@@ -118,6 +118,37 @@ class FxLayer:
             radius=max(1, int(2 * intensity)),
         )
 
+    def emit_bullet_particle(self, x: float, y: float, kind: int,
+                              color: tuple[int, int, int] | None = None,
+                              intensity: float = 1.0) -> None:
+        """Emit a single bullet-trail particle. Caller throttles.
+
+        2026-09-06 visual polish v2: every player bullet emits
+        per-weapon particles (P_SPARK for most weapons, P_DUST
+        for green acid, P_GLOW for purple void, P_FIRE for
+        orange fireball). The engine kind/color/intensity come
+        from the WeaponVFX dataclass for the bullet's weapon.
+
+        `intensity` 0.0 = skip emit (no-op). Note: we do NOT
+        short-circuit on `kind == 0` because P_SPARK == 0 in the
+        engine, and yellow plasma / red pulse / blue ion / pink
+        heart / cyan ice / rainbow all use P_SPARK with
+        intensity > 0. The "no particles" marker is the
+        WeaponVFX's `particles_per_frame == 0` (the caller passes
+        intensity = trail_intensity * particles_per_frame, which
+        is 0 for white piercing).
+        """
+        if intensity <= 0.0:
+            return
+        vx = random.uniform(-25, 25)
+        vy = random.uniform(-25, 25)
+        self.engine.emit(
+            kind, x, y, vx, vy,
+            color=color,
+            life=0.2 * intensity,
+            radius=1,
+        )
+
     def emit_explosion_typed(self, kind: str, x: float, y: float,
                              scale: float = 1.0) -> None:
         """Emit a kind-colored, kind-scaled explosion. All 6 enemy kinds supported.

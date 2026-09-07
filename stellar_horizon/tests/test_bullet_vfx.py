@@ -181,3 +181,52 @@ def test_compute_handles_out_of_range_weapon():
     # sine starts at 0 -> alpha = 255 - 0.3*127 = ~217, but range
     # just needs to be valid).
     assert 0 <= v.alpha <= 255
+
+
+# --- 2026-09-06 visual polish v2: per-weapon particle fields ---------
+
+def test_weapon_vfx_dataclass_new_fields_default_correctly():
+    # 2026-09-06 visual polish v2: WeaponVFX gets 4 new fields
+    # (particle_kind, particle_color, particles_per_frame,
+    # trail_intensity). Default values must be 0 / None / 0.0 /
+    # 0.0 so existing call sites keep working.
+    from stellar_horizon.fx.bullet_vfx import WeaponVFX
+    v = WeaponVFX()
+    assert v.particle_kind == 0
+    assert v.particle_color is None
+    assert v.particles_per_frame == 0.0
+    assert v.trail_intensity == 0.0
+
+
+def test_weapon_vfx_dataclass_is_frozen():
+    # 2026-09-06 visual polish v2: WeaponVFX stays frozen (immutable
+    # config). Attempting to set a field raises FrozenInstanceError.
+    from stellar_horizon.fx.bullet_vfx import WeaponVFX
+    import dataclasses
+    v = WeaponVFX(particle_kind=5)
+    with __import__("pytest").raises(dataclasses.FrozenInstanceError):
+        v.particle_kind = 10
+
+
+def test_weapon_vfx_params_all_ten_weapons_have_consistent_fields():
+    # 2026-09-06 visual polish v2: consistency invariant.
+    # The "no particles" marker is `particles_per_frame == 0`
+    # (NOT particle_kind == 0 — P_SPARK == 0 in the engine, so
+    # 6 weapons use it with non-zero particles_per_frame).
+    # So the invariant is: every weapon with
+    # `particles_per_frame > 0` MUST have a non-None
+    # `particle_color` (otherwise nothing is rendered).
+    # Note: the original brief's test asserted
+    # `particle_kind != 0 when particles_per_frame > 0`, but
+    # P_SPARK == 0 in the engine. The test as written was
+    # logically unsatisfiable. The convention was changed:
+    # the no-op marker is now `particles_per_frame == 0`,
+    # and `emit_bullet_particle` no longer short-circuits on
+    # `kind == 0`.
+    from stellar_horizon.fx.bullet_vfx import WEAPON_VFX_PARAMS
+    for i, params in enumerate(WEAPON_VFX_PARAMS):
+        if params.particles_per_frame > 0.0:
+            assert params.particle_color is not None, (
+                f"weapon {i} has particles_per_frame="
+                f"{params.particles_per_frame} but no color"
+            )
