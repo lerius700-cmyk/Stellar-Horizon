@@ -13,6 +13,7 @@ special pool (gravity bombs) or apply special contact damage.
 from __future__ import annotations
 
 import math
+import random
 from collections import deque
 
 import pygame
@@ -64,25 +65,16 @@ _ENEMY_TRAIL_INTENSITY = {
 # 2026-09-06 polish: when an enemy dies it now falls to the
 # ground instead of locking in place. The dying_timer drives the
 # fall duration, but the ship also gets purged early if it leaves
-# the bottom of the viewport. Tuned so a heavy/bomber that dies
-# at y=80 reaches the ground (~y=270) in ~0.7s, matching the
-# death-sheet loop length.
-_ENEMY_DYING_GRAVITY_PX_S2 = 620.0   # px/s^2
+# the bottom of the viewport. Tuned in destruction-fall v2 so a
+# heavy/bomber that dies at y=80 reaches the ground (~y=270) in
+# ~0.8s, matching the death-sheet loop length.
+_ENEMY_DYING_GRAVITY_PX_S2 = 500.0   # px/s^2, tuned in destruction-fall v2
 _ENEMY_DYING_HORIZONTAL_DRIFT = 0.35  # multiplier on vx while falling
 _ENEMY_DYING_TUMBLE_DEG_PER_S = 240.0 # visual rotation rate
 _ENEMY_DYING_OFFSCREEN_Y = 295.0      # beyond the bottom edge of the 270-tall viewport
 
 # 2026-09-06 destruction-fall polish v2: realistic tumble physics.
 # See docs/superpowers/specs/2026-09-06-destruction-fall-design.md
-#
-# NOTE: The spec asks for _ENEMY_DYING_GRAVITY_PX_S2 = 500.0 here,
-# but a value of 620.0 was already declared above (in the v1
-# destruction animation, commit 6c3316b) and is consumed by
-# update(). This task is "setup only — no behavior change",
-# so the existing 620.0 is left in place. A follow-up task will
-# migrate the gravity value to the new spec (500.0) along with
-# the rewrite of update() and take_damage() to use the new
-# exponential-drag physics.
 _ENEMY_DYING_DRAG_LINEAR = 1.8              # 1/s, exp drag on vx
 _ENEMY_DYING_DRAG_ANGULAR = 0.6             # 1/s, exp drag on omega
 _ENEMY_DYING_OMEGA_RANGE = (-180.0, 180.0)  # deg/s random initial spin
@@ -204,15 +196,15 @@ class Enemy:
         # that reach the ground before the timer expires.
         if self.dying_timer > 0.0:
             self.dying_timer -= dt
-            # Apply gravity to the y velocity, then integrate. The
-            # horizontal velocity is dampened so the ship doesn't
-            # keep flying forward as it falls — it tumbles.
+            self.dying_elapsed += dt
+            # Apply gravity to vertical velocity.
             self.vy += _ENEMY_DYING_GRAVITY_PX_S2 * dt
+            # Drag will be applied in a later task. For now,
+            # vx and omega are unchanged.
+            self.dying_rotation += self.dying_omega * dt
+            # Integrate position.
             self.y += self.vy * dt
-            self.x += self.vx * _ENEMY_DYING_HORIZONTAL_DRIFT * dt
-            # Visual tumble (degrees). Unbounded; the draw code
-            # mods by 360 internally.
-            self.dying_rotation += _ENEMY_DYING_TUMBLE_DEG_PER_S * dt
+            self.x += self.vx * dt
             if self.y > _ENEMY_DYING_OFFSCREEN_Y or self.dying_timer <= 0.0:
                 self.dying_timer = 0.0
                 self.alive = False
@@ -341,12 +333,21 @@ class Enemy:
             # keep the invariant).
             if self.dying_timer <= 0.0:
                 self.base_sprite_name = self.sprite_name
-                # Swap to the per-kind death sheet. The gameplay
-                # scene's _draw_enemy_sprite() will detect
-                # dying_timer > 0 and use this name (overriding
-                # the kind-based fallback if sprite_name was empty).
-                # Timer is 1.0s so the 10-frame @ 12fps death sheet
-                # (0.83s) plays one full loop with a small tail.
+                # Zero momentum: the ship "dies" — no carry-over
+                # from the previous movement. Gravity will pull
+                # it down from rest.
+                self.vx = 0.0
+                self.vy = 0.0
+                # Random initial angular velocity gives variety:
+                # each death tumbles in a different direction.
+                self.dying_omega = random.uniform(
+                    *_ENEMY_DYING_OMEGA_RANGE
+                )
+                self.dying_elapsed = 0.0
+                self._smoke_throttle = 0
+                # Swap to the per-kind death sheet for the
+                # initial 0.15s burst. After that, the ship's
+                # IDLE sheet takes over (see current_dying_sheet).
                 self.sprite_name = f"enemy_{self.kind}_death_v1"
                 self.dying_timer = 1.0
             if self.fx is not None:

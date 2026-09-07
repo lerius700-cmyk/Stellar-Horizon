@@ -89,12 +89,15 @@ def test_enemy_take_damage_does_not_restart_dying_sequence():
 
 
 def test_enemy_update_skips_movement_when_dying():
-    # 2026-09-06 polish 2: the dying enemy no longer locks in
-    # place — it now falls to the ground under arcade gravity and
-    # tumbles. So the FIRST update tick DOES change y (gravity
-    # adds to vy) and x (vx drift). Subsequent updates keep
-    # accelerating downward. After enough ticks, the ship leaves
-    # the bottom of the viewport and is marked dead.
+    # 2026-09-06 polish 2 + destruction-fall v2: the dying enemy
+    # no longer locks in place — it now falls to the ground under
+    # arcade gravity and tumbles. After destruction-fall v2, the
+    # vx/vy are ZEROED in take_damage() (no carry-over from the
+    # pre-death movement), so the FIRST update tick changes y
+    # (gravity adds to vy) but x stays put (vx = 0). Rotation
+    # still advances via the random initial omega. After enough
+    # ticks, the ship leaves the bottom of the viewport and is
+    # marked dead.
     path = path_s_right_to_left(y_offset=0)
     hybrid = HybridPath.from_segments([path])
     follower = PathFollower(hybrid)
@@ -107,16 +110,24 @@ def test_enemy_update_skips_movement_when_dying():
     e.on_spawn()  # sets kind=scout
     e.hp = 1
     e.take_damage(1)
+    # After take_damage, vx/vy are zeroed — no carry-over.
+    assert e.vx == 0.0, f"vx should be 0 after death, got {e.vx}"
+    assert e.vy == 0.0, f"vy should be 0 after death, got {e.vy}"
     px_before, py_before = e.x, e.y
     e.update(0.05, FakePlayer())
-    # The ship should be moving down (gravity) and slightly left
-    # (vx drift). It should NOT be frozen in place anymore.
+    # The ship should be moving down (gravity). It should NOT be
+    # frozen in place anymore.
     assert e.y > py_before, (
         f"dying enemy should fall (y went {py_before} -> {e.y})"
     )
-    assert e.x < px_before, "dying enemy should keep drifting in vx"
-    # Rotation must be advancing (tumble).
-    assert e.dying_rotation > 0.0
+    # x is unchanged because vx was zeroed by take_damage.
+    assert e.x == px_before, (
+        f"dying enemy should not drift in x (vx=0); x went {px_before} -> {e.x}"
+    )
+    # Rotation must be advancing (tumble via random omega).
+    assert e.dying_rotation != 0.0, (
+        f"dying enemy should rotate via random omega; got {e.dying_rotation}"
+    )
 
 
 def test_enemy_dying_falls_and_is_removed_at_bottom_of_viewport():
@@ -264,3 +275,44 @@ def test_enemy_emits_bullet_after_telegraph():
         e.update(0.05, player)
         e.x, e.y = 200.0, 100.0  # keep position in play area (no path = no auto-move)
     assert e.telegraphing is False
+
+
+def test_dying_zeroes_momentum():
+    # 2026-09-06 destruction-fall: take_damage must zero vx/vy
+    # so the ship stops moving forward/backward instantly and
+    # gravity takes over. Previously, the previous frame's
+    # movement velocity was preserved, making the ship appear
+    # to fly off at full speed in its pre-death direction.
+    e = Enemy()
+    e.kind = "scout"
+    e.on_spawn()
+    e.vx, e.vy = 180.0, -90.0
+    e.hp = 1
+    e.take_damage(1)
+    assert e.vx == 0.0, f"vx should be 0 after take_damage, got {e.vx}"
+    assert e.vy == 0.0, f"vy should be 0 after take_damage, got {e.vy}"
+
+
+def test_dying_applies_gravity_monotonically():
+    # Gravity should pull the ship straight down. y must grow
+    # monotonically over a sequence of update() calls and vy
+    # must become positive (downward in screen coords).
+    e = Enemy()
+    e.kind = "scout"
+    e.on_spawn()
+    e.hp = 1
+    e.x = 200.0
+    e.y = 50.0
+    e.take_damage(1)
+    y_prev = e.y
+    vy_samples = []
+    for _ in range(20):
+        e.update(0.05, FakePlayer())
+        assert e.y > y_prev, f"y went {y_prev} -> {e.y} (must grow)"
+        vy_samples.append(e.vy)
+        y_prev = e.y
+    # vy must be positive (downward in screen coords) and growing
+    assert vy_samples[0] > 0.0, f"vy should be positive (downward), got {vy_samples[0]}"
+    assert vy_samples[-1] > vy_samples[0], (
+        f"vy should grow under gravity: start {vy_samples[0]} end {vy_samples[-1]}"
+    )
