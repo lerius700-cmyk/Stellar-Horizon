@@ -28,15 +28,17 @@ from stellar_horizon.ui.animated_sprite import AnimatedSprite
 
 # --- AnimatedSprite -----------------------------------------------------
 
-def test_animated_sprite_cycles_frames():
+def test_animated_sprite_cycles_frames(tmp_path):
     """With fps=10 and dt=0.15 the sprite should advance ~1-2 frames."""
     # Build a tiny 4-frame 2x2 sheet in memory so we don't need a
-    # real asset for this unit test.
+    # real asset for this unit test. Write to tmp_path so we don't
+    # pollute the assets folder (the legacy sprites/ dir is being
+    # removed in 2026-09-08 visual-polish-v3).
     sheet = pygame.Surface((8, 2), pygame.SRCALPHA)
     sheet.fill((10, 15, 31, 255))  # navy background
     for i in range(4):
         sheet.fill((255, 0, 0, 255), (i * 2, 0, (i + 1) * 2, 2))
-    path = Path("stellar_horizon/assets/sprites/_test_anim.png")
+    path = tmp_path / "_test_anim.png"
     path.parent.mkdir(parents=True, exist_ok=True)
     pygame.image.save(sheet, str(path))
 
@@ -69,7 +71,7 @@ def test_animated_sprite_loaded_flag():
 
 def test_gameplay_scene_loads_sprites_split():
     """2026-09-06 polish pass: switched to AI-generated sprites in
-    sprites_v2/. New layout:
+    sprites/. New layout:
     - _animated: 5 player variants + 20 enemy variants (4 scout, 4
       cruiser, 3 heavy, 3 bomber, 3 ufo, 3 kamikaze) + 2 legacy
       bullets + 5 laser sheets (laser_01..laser_05, 6 frames each
@@ -87,12 +89,10 @@ def test_gameplay_scene_loads_sprites_split():
                       Path("stellar_horizon/waves/waves_act1.json"),
                       Path("stellar_horizon/assets"))
     s._load_sprites()
-    # Animated cache: 5 player + 20 enemy (per _ENEMY_SPRITE_CYCLE) +
-    # 2 legacy bullets + 7 kind-name aliases (scout, cruiser, heavy,
-    # bomber, ufo, kamikaze, player) + 13 action sheets (1 player
-    # thrust + 6 enemy attack + 6 enemy death) + 5 laser sheets
-    # (laser_01..laser_05) = 52.
-    assert len(s._animated) == 52
+    # 5 player + 20 enemy + 1 thrust + 6 attack + 6 death + 5 laser +
+    # 2 bullet + 6 boss = 51. (Previous comment said 52 but the math
+    # was off-by-one. Fixed 2026-09-08 in visual-polish-v3 refactor.)
+    assert len(s._animated) == 51
     # 5 player variants.
     for n in ("player_v1", "player_v2", "player_v3", "player_v4", "player_v5"):
         assert n in s._animated

@@ -208,7 +208,6 @@ class GameplayScene(Scene):
             10 frames @ 8 fps, 72x72
           - 5 lasers: 6 frames @ 12 fps, 29x7 (alpha-pulse animation)
         """
-        sprite_dir = self.assets_dir / "sprites_v2"
         # All names to load as animated sheets. Player + 4 player
         # variants + 20 enemy variants + 2 bullets (kept from old).
         animated_names = [
@@ -235,9 +234,8 @@ class GameplayScene(Scene):
             "enemy_ufo_attack_v1",     "enemy_ufo_death_v1",
             "enemy_kamikaze_attack_v1","enemy_kamikaze_death_v1",
         ]
-        # Bullets stay on the legacy sprites/ dir (small 8x8 projectiles
-        # not worth AI regenerating).
-        bullet_dir = self.assets_dir / "sprites"
+        # Bullets (small 8x8 projectiles, loaded via the resolver into
+        # sprites/bullets/).
         bullet_names = ["player_bullet", "enemy_bullet"]
 
         self._animated.clear()
@@ -249,7 +247,7 @@ class GameplayScene(Scene):
         # Player + enemies: 10 frames at 12 fps, 29x29 (was 32x32,
         # shrunk 10% 2026-09-06 for more playfield space).
         for name in animated_names:
-            path = sprite_dir / f"{name}_sheet.png"
+            path = self._sprite_path(name)
             anim = AnimatedSprite(
                 str(path), 29, 29, 10, fps=12.0,
             )
@@ -282,7 +280,7 @@ class GameplayScene(Scene):
                 self._animated[kind] = self._animated[default_variant].share_state_with()
         # Bullets: 6 frames at 12 fps, 8x8 (legacy dimensions).
         for name in bullet_names:
-            path = bullet_dir / f"{name}_sheet.png"
+            path = self._sprite_path(name)
             self._animated[name] = AnimatedSprite(
                 str(path), 8, 8, 6, fps=12.0,
             )
@@ -293,7 +291,7 @@ class GameplayScene(Scene):
         self._boss_anims.clear()
         for state in ("idle", "telegraph", "charge", "dying",
                       "alternate_a", "alternate_b"):
-            path = sprite_dir / f"boss_{state}_v1_sheet.png"
+            path = self._sprite_path(f"boss_{state}_v1")
             anim = AnimatedSprite(
                 str(path), 72, 72, 10, fps=8.0,
             )
@@ -314,7 +312,7 @@ class GameplayScene(Scene):
         self._laser_sprites.clear()
         for i in range(1, 6):
             name = f"laser_{i:02d}"
-            path = sprite_dir / f"{name}_sheet.png"
+            path = self._sprite_path(name)
             try:
                 raw = pygame.image.load(str(path))
                 first_frame = raw.subsurface(pygame.Rect(0, 0, 29, 7)).copy()
