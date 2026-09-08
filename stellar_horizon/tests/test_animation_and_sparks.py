@@ -98,10 +98,14 @@ def test_gameplay_scene_loads_sprites_split():
     # Animated cache: 5 player + 20 enemy + 1 thrust + 6 attack + 6
     # death + 7 kind aliases (scout, cruiser, heavy, bomber, ufo,
     # kamikaze, player — same AnimatedSprite instances as v1 variants
-    # but separate dict keys) + 2 bullets + 9 lasers = 56.
+    # but separate dict keys) + 2 bullets + 9 lasers + 4 long sheets
+    # (laser_06..laser_09 _long) = 60.
     # (Boss states are in _boss_anims, NOT _animated. 2026-09-08.)
     # 2026-09-08 v1.5: 5->9 laser sheets (cyan/orange/white/magenta).
-    assert len(s._animated) == 56
+    # 2026-09-08 v1.5: +4 long sheets for the charged weapons
+    # (5/6/7/8), keyed by archetype in self._animated under the
+    # laser_NN_long name.
+    assert len(s._animated) == 60
     # 5 player variants.
     for n in ("player_v1", "player_v2", "player_v3", "player_v4", "player_v5"):
         assert n in s._animated

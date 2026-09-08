@@ -12,7 +12,7 @@ from stellar_horizon.audio import sfx
 from stellar_horizon.audio.thrusters import ThrusterManager
 from stellar_horizon.core.scene_manager import Scene, SceneName
 from stellar_horizon.entities.boss import Boss, BossPhase
-from stellar_horizon.entities.bullet import EnemyBullet, PlayerBullet
+from stellar_horizon.entities.bullet import EnemyBullet, PlayerBullet, WEAPON_ARCHETYPE
 from stellar_horizon.entities.enemy import Enemy
 from stellar_horizon.entities.player import Player
 from stellar_horizon.entities.powerup import PowerUp, PowerUpKind, roll_enemy_drop
@@ -116,6 +116,12 @@ class GameplayScene(Scene):
         # and applies a per-weapon VFX on top (alpha pulse, scale
         # pulse, soft halo).
         self._laser_sprites: dict = {}
+        # 2026-09-08 v1.5: 4 long (150x50, 6 frames) "charge preview"
+        # sheets for the charged weapons (5/6/7/8). Keyed by weapon
+        # index, not archetype — the draw code looks up by
+        # self.player.weapon. Drawn near the muzzle with alpha ramping
+        # in as charge_time grows, scaled 1/5 (30x10 on screen).
+        self._laser_long_sprites: dict = {}
         # Per-kind counter used to cycle through enemy sprite variants
         # so consecutive spawns of the same kind look different.
         self._enemy_sprite_idx: dict = {}
@@ -350,6 +356,39 @@ class GameplayScene(Scene):
                 str(path), 29, 7, 6, fps=12.0,
             )
             self._animated[name] = anim
+        # 2026-09-08 v1.5: load the 4 "charged state" long (150x50)
+        # sheets — one per charged weapon (5/6/7/8). Each sheet has
+        # 6 frames at 12 fps. Rendered as a 30x10 charge preview
+        # near the muzzle while fire is held, with alpha ramping in
+        # as charge_time grows. The long sheet name is derived from
+        # the WEAPON_ARCHETYPE table so the same sprite that's used
+        # in-flight (compact laser_NN) is also the charged preview
+        # at full size (laser_NN_long).
+        # 2026-09-08: pre-flight with 1x1 magenta fallback to make a
+        # missing sheet obvious in dev.
+        self._laser_long_sprites.clear()
+        for weapon in (5, 6, 7, 8):
+            # _load_sprites runs BEFORE self.player is constructed
+            # (see on_enter), so we pull the WEAPON_ARCHETYPE table
+            # from the bullet module (it's a module-level constant,
+            # not a class attribute). Mapping (from bullet.py):
+            #   5 (orange fireball)  -> archetype 6 -> laser_07_long
+            #   6 (white piercing)   -> archetype 7 -> laser_08_long
+            #   7 (pink heart)       -> archetype 8 -> laser_09_long
+            #   8 (cyan ice)         -> archetype 5 -> laser_06_long
+            archetype = WEAPON_ARCHETYPE[weapon] \
+                if 0 <= weapon < len(WEAPON_ARCHETYPE) else 0
+            sheet_name = f"laser_{archetype + 1:02d}_long"
+            path = self._sprite_path(sheet_name)
+            anim = AnimatedSprite(
+                str(path), 150, 50, 6, fps=12.0,
+            )
+            self._laser_long_sprites[weapon] = anim
+            # Register under the full sheet name in self._animated so
+            # the per-frame update tick (which iterates self._animated
+            # values) advances the animation in sync with everything
+            # else.
+            self._animated[sheet_name] = anim
 
     def _update_beam(self, dt: float) -> None:
         """Manage the weapon-5 beam: spawn / despawn / update end /
@@ -879,6 +918,35 @@ class GameplayScene(Scene):
             draw_charge_aura(surface, self.player.x, self.player.y,
                              self.player.weapon, self.player.charge_time,
                              now=self._elapsed)
+            # 2026-09-08 v1.5: "charged state" long preview. A 30x10
+            # scaled version of the 150x50 long sheet (6 frames at
+            # 12 fps) extends FORWARD from the muzzle while fire is
+            # held, with alpha ramping in as charge_time grows. The
+            # tail of the sprite (left edge) sits at the muzzle and
+            # the head (right edge — sheets are right-aligned in
+            # postprocess) extends ~30px forward, showing the player
+            # what's about to fly out of the cannon. On release the
+            # bullet emerges from the head and the preview disappears.
+            #
+            # Alpha formula:
+            # - continuous weapons (5/8, CHARGE_TIME_S = 0.0): use
+            #   0.5s as the visual ramp time
+            # - discrete weapons (6/7, CHARGE_TIME_S = 1.2/1.5):
+            #   alpha reaches 1.0 at the charge threshold
+            # No-op for tap-only weapons (0-4, 9) and charge_time=0.
+            long_anim = self._laser_long_sprites.get(self.player.weapon)
+            if long_anim is not None and self.player.charge_time > 0.0:
+                weapon = self.player.weapon
+                threshold = Player.CHARGE_TIME_S[weapon]
+                ramp_time = 0.5 if (threshold is None or threshold <= 0.0) else threshold
+                alpha01 = max(0.0, min(1.0, self.player.charge_time / ramp_time))
+                if alpha01 > 0.02:
+                    frame = long_anim.get_current_surface()  # 150x50
+                    scaled = pygame.transform.scale(frame, (30, 10))
+                    scaled.set_alpha(int(alpha01 * 255))
+                    muzzle_x = int(self.player.x + self.player.BULLET_OFFSET_X)
+                    # Tail at the muzzle, head extending forward.
+                    surface.blit(scaled, (muzzle_x, int(self.player.y - 5)))
         # 2026-09-08 v1.5: beam (weapon 5 "lanzallamas"). Drawn on
         # top of the player so the body looks like it emerges from
         # the muzzle, but before the bullets so flying bolts are
