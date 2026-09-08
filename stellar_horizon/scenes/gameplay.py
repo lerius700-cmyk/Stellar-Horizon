@@ -173,7 +173,7 @@ class GameplayScene(Scene):
         Prefix-based: the name encodes its folder. This avoids a manifest
         and keeps the resolution explicit. Naming convention (enforced
         here): boss_* -> sprites/boss/; player_* -> sprites/player/;
-        enemy_* -> sprites/enemies/{kind}/ (kind = name[6:].split('_')[0]);
+        enemy_* -> sprites/enemies/{kind}/ (kind = name.split("_")[1]);
         laser_* + player_bullet + enemy_bullet -> sprites/bullets/.
 
         Raises:
