@@ -93,6 +93,10 @@ class GameplayScene(Scene):
         self._thrust_timer: float = 0.0
         self.player_bullets: list[PlayerBullet] = [PlayerBullet() for _ in range(PLAYER_BULLET_POOL)]
         self.enemy_bullets: list[EnemyBullet] = [EnemyBullet() for _ in range(ENEMY_BULLET_POOL)]
+        # 2026-09-08 v1.5: continuous beam entity for weapon 5 (orange
+        # fire "lanzallamas"). Only one beam at a time, not a pool.
+        from stellar_horizon.entities.beam import Beam
+        self._beam: Beam = Beam()
         # Power-up rings spawned by enemy kills and (rarely) by the
         # boss. Updated + drawn alongside the other entities.
         self.powerups: list[PowerUp] = []
@@ -347,6 +351,97 @@ class GameplayScene(Scene):
             )
             self._animated[name] = anim
 
+    def _update_beam(self, dt: float) -> None:
+        """Manage the weapon-5 beam: spawn / despawn / update end /
+        apply damage on tick.
+
+        The beam is alive when (player.weapon == 5 AND player.firing).
+        The start point follows the player's muzzle every frame; the
+        end point is computed by scanning enemies in the +X direction
+        and picking the closest one that's within MAX_LENGTH and
+        within a vertical tolerance. If no enemy is in range, the
+        end point is at MAX_LENGTH straight ahead.
+        """
+        beam = self._beam
+        should_be_alive = (
+            self.player.weapon == 5
+            and self.player.firing
+            and self.player.alive
+            and not self.player.dying
+        )
+        if should_be_alive and not beam.alive:
+            # Spawn at the muzzle.
+            beam.spawn(
+                start_x=self.player.x + self.player.BULLET_OFFSET_X,
+                start_y=self.player.y,
+                end_x=self.player.x + self.player.BULLET_OFFSET_X
+                     + beam.MAX_LENGTH,
+                end_y=self.player.y,
+                spawn_time=self._elapsed,
+            )
+        elif not should_be_alive and beam.alive:
+            beam.despawn()
+            return
+        if not beam.alive:
+            return
+        # Start follows the player.
+        beam.update_start(
+            self.player.x + self.player.BULLET_OFFSET_X,
+            self.player.y,
+        )
+        # Find the nearest enemy in line of fire. Cast a horizontal
+        # ray from the muzzle and find the first enemy within
+        # MAX_LENGTH and a small vertical tolerance.
+        muzzle_x = self.player.x + self.player.BULLET_OFFSET_X
+        muzzle_y = self.player.y
+        max_end_x = muzzle_x + beam.MAX_LENGTH
+        best_enemy = None
+        best_x = max_end_x
+        best_y = muzzle_y
+        # Vertical tolerance so the beam still finds slightly
+        # off-axis enemies (player can aim a bit by moving up/down).
+        vertical_tol = 32
+        for e in self.wave_manager.spawned_enemies:
+            if not e.alive:
+                continue
+            if e.x < muzzle_x - 4:
+                # Behind the muzzle — ignore.
+                continue
+            if e.x > max_end_x:
+                continue
+            if abs(e.y - muzzle_y) > vertical_tol:
+                continue
+            if e.x < best_x:
+                best_x = e.x
+                best_y = e.y
+                best_enemy = e
+        # Also check the boss (the boss isn't in spawned_enemies).
+        if (self.boss_active and self.boss is not None
+                and self.boss.alive
+                and self.boss.x >= muzzle_x - 4
+                and self.boss.x <= max_end_x
+                and abs(self.boss.y - muzzle_y) <= vertical_tol
+                and self.boss.x < best_x):
+            best_x = self.boss.x
+            best_y = self.boss.y
+            best_enemy = self.boss
+        beam.update_end(best_x, best_y)
+        # Tick the damage timer and apply damage on tick.
+        beam.update(dt)
+        if beam.advance_tick(dt):
+            # Damage every enemy in the strip.
+            all_targets = list(self.wave_manager.spawned_enemies)
+            if self.boss_active and self.boss is not None and self.boss.alive:
+                all_targets.append(self.boss)
+            beam.damage_enemies_in_strip(all_targets, self.fx)
+        # Continuous impact sparks at the impact point (visual
+        # dispersion) — regardless of whether anything was hit.
+        if self.fx is not None and best_enemy is not None:
+            # A small constant rate of sparks at the impact point.
+            self.fx.emit_impact(
+                best_x, best_y, count=1, color=beam.COLOR_BODY,
+            )
+
     def _pick_enemy_sprite(self, kind: str) -> str | None:
         """Return a sprite name for an enemy of the given kind.
 
@@ -458,6 +553,12 @@ class GameplayScene(Scene):
         # the pool until no dead slot exists, blocking new shots).
         self.player.update(dt, self._keys, self.player_bullets,
                            now=self._elapsed)
+        # 2026-09-08 v1.5: beam management for weapon 5 (orange fire
+        # "lanzallamas"). The beam is alive while the player is
+        # holding fire on weapon 5. While alive, its start follows
+        # the player muzzle and its end is the nearest enemy in line
+        # of fire (or max range if no enemy is in range).
+        self._update_beam(dt)
         for b in self.player_bullets:
             if b.alive:
                 # 2026-09-06 visual polish v2: per-weapon bullet
@@ -762,6 +863,13 @@ class GameplayScene(Scene):
             draw_charge_aura(surface, self.player.x, self.player.y,
                              self.player.weapon, self.player.charge_time,
                              now=self._elapsed)
+        # 2026-09-08 v1.5: beam (weapon 5 "lanzallamas"). Drawn on
+        # top of the player so the body looks like it emerges from
+        # the muzzle, but before the bullets so flying bolts are
+        # still visible if they cross the beam path.
+        if self._beam.alive:
+            from stellar_horizon.fx.beam_renderer import draw as draw_beam
+            draw_beam(surface, self._beam, now=self._elapsed)
         for b in self.player_bullets:
             if b.alive:
                 self._draw_player_bullet_sprite(surface, b, ox, oy)

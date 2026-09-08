@@ -259,12 +259,11 @@ class Player:
                         self._piercing_spawn_timer = 0.0
         if self.firing and self.shoot_cooldown <= 0.0 and bullets_pool:
             if self.weapon == 5:
-                # Continuous beam: spawn one small bolt per frame at the
-                # muzzle. The actual BEAM entity is a future addition;
-                # for v1.5 the "beam" is rendered as a stream of small
-                # bolts that share the weapon's archetype sprite.
-                self._spawn_bullet(bullets_pool)
-                self.shoot_cooldown = 0.04  # ~25 bolts/s for a dense beam
+                # 2026-09-08 v1.5: weapon 5 is the BEAM, not a stream of
+                # bullets. The GameplayScene spawns and updates the
+                # Beam entity while the player is holding fire on this
+                # weapon. No bullet spawn here.
+                pass
             elif self.weapon == 8:
                 # Piercing stream spawn was already handled above (the
                 # timer advances outside the bullets_pool check, but
