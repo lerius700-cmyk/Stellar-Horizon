@@ -70,13 +70,19 @@ def test_animated_sprite_loaded_flag():
 # --- GameplayScene integration ----------------------------------------
 
 def test_gameplay_scene_loads_sprites_split():
-    """2026-09-06 polish pass: switched to AI-generated sprites in
-    sprites/. New layout:
+    """2026-09-08 visual-polish-v3: assets reorganized as SF+SM sub-silo.
+
+    Layout:
     - _animated: 5 player variants + 20 enemy variants (4 scout, 4
-      cruiser, 3 heavy, 3 bomber, 3 ufo, 3 kamikaze) + 2 legacy
-      bullets + 5 laser sheets (laser_01..laser_05, 6 frames each
-      at 12 fps, 29x7) = 32 total. Player/enemy variants are
-      10 frames per sheet at 12 fps, 29x29.
+      cruiser, 3 heavy, 3 bomber, 3 ufo, 3 kamikaze) + 1 player_thrust
+      + 6 enemy attack sheets + 6 enemy death sheets + 7 kind aliases
+      (scout, cruiser, heavy, bomber, ufo, kamikaze, player — same
+      AnimatedSprite instances as v1 variants but separate dict keys)
+      + 2 legacy bullets (player_bullet, enemy_bullet) + 5 laser
+      sheets (laser_01..laser_05, 6 frames each at 12 fps, 29x7) = 52
+      total. Player/enemy variants are 10 frames per sheet at 12 fps,
+      29x29. The 6 boss states are in _boss_anims (separate dict),
+      NOT in _animated.
     - _boss_anims: 6 states (IDLE, TELEGRAPH, CHARGE, DYING +
       2 alternates), 10 frames per sheet at 8 fps, 72x72.
     - _laser_sprites: 5 single-frame first-frames of the 5 laser
