@@ -25,14 +25,17 @@ import sys
 from pathlib import Path
 from typing import List, Tuple
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 
 FRAME_W = 29
 FRAME_H = 7
 N_FRAMES = 6
-STRIP_W = FRAME_W * N_FRAMES  # 174
-STRIP_H = FRAME_H * 6          # 42 (AI may produce 7 or 42; we crop to 42)
+STRIP_W = FRAME_W * N_FRAMES  # 174 — required strip width
+# STRIP_H is informational only: split_strip_to_frames accepts any
+# height >= FRAME_H and takes the first 7 rows of each 29-wide column.
+# The 6 below is the original Matrix output height (29*6=174) for reference.
+STRIP_H = FRAME_H * 6          # 42, original Matrix output height for reference
 
 
 def split_strip_to_frames(strip: Image.Image) -> List[Image.Image]:
@@ -66,7 +69,6 @@ def crop_to_content(frame: Image.Image) -> Image.Image:
     # a white or a black background (Matrix returned black rectangles
     # for the strip output of visual-polish-v3 Task 6), so we check the
     # top-left pixel and floodfill whichever background is present.
-    from PIL import ImageDraw
     work = frame.copy()
     r, g, b, a = work.getpixel((0, 0))
     if r > 200 and g > 200 and b > 200:
