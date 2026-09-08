@@ -10,6 +10,7 @@ from sprite_tests.regen_laser_strips import (
     crop_to_content,
     assemble_sheet,
     save_reference,
+    process_strip,
 )
 
 
@@ -77,3 +78,35 @@ def test_save_reference_writes_first_frame(tmp_path: Path):
     ref = Image.open(out)
     assert ref.size == (29, 7)
     assert ref.getpixel((5, 3)) == (255, 0, 0, 255)
+
+
+def test_process_strip_writes_sheet_and_reference(tmp_path: Path):
+    """End-to-end: 174x42 white-bg strip with a known sprite
+    in frame 0 should produce a 174x7 sheet + 29x7 reference."""
+    in_path = tmp_path / "strip.png"
+    out_dir = tmp_path / "out"
+
+    # Build a synthetic 174x42 strip with one red dot in frame 0.
+    strip = Image.new("RGBA", (174, 42), (255, 255, 255, 255))
+    for dx in range(10, 20):
+        strip.putpixel((dx, 3), (255, 0, 0, 255))
+    strip.save(str(in_path))
+
+    sheet_path, ref_path = process_strip(in_path, out_dir, "laser_test")
+
+    assert sheet_path == out_dir / "laser_test_sheet.png"
+    assert ref_path == out_dir / "laser_test.png"
+    assert sheet_path.exists()
+    assert ref_path.exists()
+    sheet = Image.open(sheet_path)
+    ref = Image.open(ref_path)
+    assert sheet.size == (174, 7)
+    assert ref.size == (29, 7)
+    # Sheet has visible red pixels (the 10-dot row survives the
+    # postprocess). We don't assert the exact position because the
+    # crop+recenter shifts it (see crop_to_content + _center_paste).
+    sheet_red = sum(1 for p in sheet.getdata() if p[0] > 200 and p[1] < 50)
+    assert sheet_red > 0, "expected red pixels in the postprocessed sheet"
+    # Reference (frame 0) has at least one red pixel somewhere.
+    ref_red = sum(1 for p in ref.getdata() if p[0] > 200 and p[1] < 50)
+    assert ref_red > 0, "expected red pixels in the reference frame"
