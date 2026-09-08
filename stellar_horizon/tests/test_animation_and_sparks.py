@@ -98,9 +98,10 @@ def test_gameplay_scene_loads_sprites_split():
     # Animated cache: 5 player + 20 enemy + 1 thrust + 6 attack + 6
     # death + 7 kind aliases (scout, cruiser, heavy, bomber, ufo,
     # kamikaze, player — same AnimatedSprite instances as v1 variants
-    # but separate dict keys) + 2 bullets + 5 lasers = 52.
+    # but separate dict keys) + 2 bullets + 9 lasers = 56.
     # (Boss states are in _boss_anims, NOT _animated. 2026-09-08.)
-    assert len(s._animated) == 52
+    # 2026-09-08 v1.5: 5->9 laser sheets (cyan/orange/white/magenta).
+    assert len(s._animated) == 56
     # 5 player variants.
     for n in ("player_v1", "player_v2", "player_v3", "player_v4", "player_v5"):
         assert n in s._animated
@@ -133,14 +134,15 @@ def test_gameplay_scene_loads_sprites_split():
     # 5 sheets (laser_01..laser_05), 6 frames each at 12 fps, 29x7.
     # The single-frame first-frame is also kept in _laser_sprites
     # for the HUD display + halo centering.
-    for n in (f"laser_{i:02d}" for i in range(1, 6)):
+    # 2026-09-08 v1.5: expanded to 9 sheets (laser_01..laser_09).
+    for n in (f"laser_{i:02d}" for i in range(1, 10)):
         assert n in s._animated
-    # laser_06..laser_10 don't exist (only 5 archetypes).
-    for n in (f"laser_{i:02d}" for i in range(6, 11)):
+    # laser_10 doesn't exist (only 9 archetypes).
+    for n in (f"laser_{i:02d}" for i in range(10, 11)):
         assert n not in s._animated
-    # Single-frame laser cache: 5 sprites (one per weapon archetype).
-    assert len(s._laser_sprites) == 5
-    for n in (f"laser_{i:02d}" for i in range(1, 6)):
+    # Single-frame laser cache: 9 sprites (one per weapon archetype).
+    assert len(s._laser_sprites) == 9
+    for n in (f"laser_{i:02d}" for i in range(1, 10)):
         assert n in s._laser_sprites
         surf = s._laser_sprites[n]
         # Each sprite is a real Surface (not the magenta 1x1 fallback).

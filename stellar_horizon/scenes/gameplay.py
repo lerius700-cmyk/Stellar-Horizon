@@ -319,7 +319,12 @@ class GameplayScene(Scene):
         # the bullet render can pull `sheet._frames[b.frame_index]`
         # for the 6-frame animation cycle.
         self._laser_sprites.clear()
-        for i in range(1, 6):
+        # 2026-09-08 v1.5: load 9 laser archetypes (laser_01..laser_09).
+        # The original v1.3.0/v1.4.0 only loaded 5 (laser_01..laser_05);
+        # v1.5 adds 4 new archetypes for weapons 5, 6, 7, 8
+        # (cyan ice, orange flame, white lightning, magenta heart).
+        # weapon 9 (rainbow streak) still aliases to laser_05.
+        for i in range(1, 10):
             name = f"laser_{i:02d}"
             path = self._sprite_path(name)
             try:

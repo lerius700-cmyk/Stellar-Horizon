@@ -115,11 +115,13 @@ def test_bullet_weapon_archetype_maps_correctly():
     # 2026-09-06 visual polish v2: each weapon id maps to a laser
     # archetype (0..4). Verify the WEAPON_ARCHETYPE table covers
     # all 10 weapons and values are in range.
+    # 2026-09-08 v1.5: expanded to 9 archetypes (0..8) for the
+    # 4 new laser sheets (laser_06..09 for cyan/orange/white/magenta).
     from stellar_horizon.entities.bullet import WEAPON_ARCHETYPE
     assert len(WEAPON_ARCHETYPE) == 10, (
         f"WEAPON_ARCHETYPE should have 10 entries, got {len(WEAPON_ARCHETYPE)}"
     )
     for i, archetype in enumerate(WEAPON_ARCHETYPE):
-        assert 0 <= archetype <= 4, (
-            f"weapon {i} archetype {archetype} out of range 0..4"
+        assert 0 <= archetype <= 8, (
+            f"weapon {i} archetype {archetype} out of range 0..8"
         )

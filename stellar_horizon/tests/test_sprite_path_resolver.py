@@ -47,7 +47,8 @@ def test_resolves_enemy_with_kind_subfolder(scene):
 
 
 def test_resolves_laser_name(scene):
-    for i in range(1, 6):
+    # 2026-09-08 v1.5: 9 laser sheets (laser_01..laser_09), not just 5.
+    for i in range(1, 10):
         p = scene._sprite_path(f"laser_{i:02d}")
         assert p == scene.assets_dir / "sprites" / "bullets" / f"laser_{i:02d}_sheet.png"
 

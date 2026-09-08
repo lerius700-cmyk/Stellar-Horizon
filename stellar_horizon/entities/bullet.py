@@ -10,17 +10,20 @@ import pygame
 # (0..4). All 10 weapons map to one of 5 sprite sheets. Multiple
 # weapons can share an archetype (e.g., acid/heart/ice all share
 # the same purple-organic archetype with different VFX).
+# 2026-09-08 v1.5: expanded to 9 archetypes (0..8). Weapons 5/6/7/8
+# now each get their own distinct sheet. Weapon 9 (rainbow streak)
+# keeps its alias to laser_05 (archetype 4).
 WEAPON_ARCHETYPE: tuple[int, ...] = (
-    0,  # 0 yellow plasma   -> laser_01
-    1,  # 1 red pulse       -> laser_02
-    2,  # 2 blue ion        -> laser_03
-    3,  # 3 green acid      -> laser_04
-    4,  # 4 purple void     -> laser_05
-    4,  # 5 orange fireball -> laser_05
-    2,  # 6 white piercing  -> laser_03
-    3,  # 7 pink heart      -> laser_04
-    2,  # 8 cyan ice        -> laser_03
-    4,  # 9 rainbow streak  -> laser_05
+    0,  # 0 yellow plasma    -> laser_01
+    1,  # 1 red pulse        -> laser_02
+    2,  # 2 blue ion         -> laser_03
+    3,  # 3 green acid       -> laser_04
+    4,  # 4 purple void      -> laser_05
+    6,  # 5 orange fireball  -> laser_07 (orange flame)
+    7,  # 6 white piercing   -> laser_08 (white lightning)
+    8,  # 7 pink heart       -> laser_09 (magenta heart)
+    5,  # 8 cyan ice         -> laser_06 (cyan ice)
+    4,  # 9 rainbow streak   -> laser_05 (alias, unchanged)
 )
 
 
