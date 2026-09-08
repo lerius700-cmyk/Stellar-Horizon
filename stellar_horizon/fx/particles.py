@@ -73,6 +73,57 @@ class FxLayer:
                              math.sin(angle) * v, color=color, life=0.4)
         self.engine.emit(P_FLASH, x, y, 0, 0, color=(255, 255, 255), life=0.08)
 
+    def emit_impact_weapon(self, x: float, y: float,
+                           vx_dir: float, vy_dir: float,
+                           params) -> None:
+        """2026-09-08 v1.5: per-weapon impact burst.
+
+        Spawns `params.count` particles in a forward cone oriented
+        along (vx_dir, vy_dir) with half-angle `params.spread_deg`.
+        Optionally adds a bright P_FLASH on top.
+
+        The cone math: each particle picks a base direction
+        (vx_dir, vy_dir) (normalized), then a random angle within
+        ±spread_deg is added via rotation. The magnitude is
+        `params.speed_px_s` plus a small per-particle jitter so
+        the burst looks organic.
+
+        Used by the collision handler in gameplay.py for every
+        bullet/enemy hit, replacing the previous hardcoded yellow
+        emit_impact with a per-weapon palette.
+        """
+        # Normalize the direction. If the bullet is stationary
+        # (vx_dir == vy_dir == 0), fall back to a +X direction.
+        mag = math.hypot(vx_dir, vy_dir)
+        if mag < 1e-3:
+            dir_x, dir_y = 1.0, 0.0
+        else:
+            dir_x, dir_y = vx_dir / mag, vy_dir / mag
+        spread_rad = math.radians(params.spread_deg)
+        for _ in range(params.count):
+            # Random angle within +/- spread_rad.
+            angle_offset = random.uniform(-spread_rad, spread_rad)
+            # Rotate the base direction by angle_offset.
+            cos_o = math.cos(angle_offset)
+            sin_o = math.sin(angle_offset)
+            base_x = dir_x * cos_o - dir_y * sin_o
+            base_y = dir_x * sin_o + dir_y * cos_o
+            # Per-particle speed jitter (0.7..1.2 of base speed).
+            speed = params.speed_px_s * random.uniform(0.7, 1.2)
+            vx = base_x * speed
+            vy = base_y * speed
+            self.engine.emit(
+                params.particle_kind, x, y, vx, vy,
+                color=params.color,
+                life=params.lifetime_s,
+            )
+        # Optional bright flash on top (P_FLASH at the impact point).
+        if params.add_flash:
+            self.engine.emit(
+                P_FLASH, x, y, 0, 0,
+                color=(255, 255, 255), life=0.08,
+            )
+
     def emit_explosion(self, x: float, y: float, scale: float = 1.0) -> None:
         n_sparks = int(16 * scale)
         n_smoke = int(4 * scale)

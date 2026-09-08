@@ -608,7 +608,9 @@ class GameplayScene(Scene):
             # even on a busy frame. Kills add a bigger explosion.
             # 2026-09-08 v1.5: respect `b.piercing` (cyan ice charged
             # stream keeps going through enemies) and `b.damage`
-            # (Megaman bolt does 3x, boomerang does 2x).
+            # (Megaman bolt does 3x, boomerang does 2x). Per-weapon
+            # impact burst via WEAPON_IMPACT_PARAMS.
+            from stellar_horizon.fx.weapon_impact import get_params
             for b in self.player_bullets:
                 if not b.alive:
                     continue
@@ -617,8 +619,13 @@ class GameplayScene(Scene):
                         # Hit point = midpoint of the two hitboxes.
                         hx = (b.x + e.x) * 0.5
                         hy = (b.y + e.y) * 0.5
-                        self.fx.emit_impact(hx, hy, count=12,
-                                            color=(255, 240, 100))
+                        # Per-weapon burst: forward cone oriented
+                        # along the bullet's velocity direction.
+                        if self.fx is not None:
+                            self.fx.emit_impact_weapon(
+                                hx, hy, b.vx, b.vy,
+                                get_params(b.weapon),
+                            )
                         e.take_damage(b.damage)
                         b.hit_count += 1
                         if not b.piercing:
@@ -689,6 +696,15 @@ class GameplayScene(Scene):
                 if not b.alive:
                     continue
                 if self.boss.alive and b.hitbox().colliderect(self.boss.hitbox()):
+                    # 2026-09-08 v1.5: per-weapon impact burst.
+                    if self.fx is not None:
+                        hx = (b.x + self.boss.x) * 0.5
+                        hy = (b.y + self.boss.y) * 0.5
+                        from stellar_horizon.fx.weapon_impact import get_params
+                        self.fx.emit_impact_weapon(
+                            hx, hy, b.vx, b.vy,
+                            get_params(b.weapon),
+                        )
                     self.boss.take_damage(b.damage)
                     b.hit_count += 1
                     if not b.piercing:
