@@ -12,7 +12,7 @@ Two related complaints surfaced after the v1.3.0 visual polish pass:
 
 1. **Bullets look like the same frame 4 times.** The 6-frame animated sprite sheets for all 5 laser archetypes (in `stellar_horizon/assets/sprites_v2/laser_0[1-5]_sheet.png`) vary only in alpha (0.85..1.0). On narrow/thin sprites, this alpha delta is invisible. The user said: *"pareciera el mismo frame repetido 4 veces"*. The 3 sample images the user shared confirm: `laser_01_sheet.png` (gray/cyan thin lines) and `laser_02_sheet.png` (yellow/green dot) show 6 nearly identical frames; only `laser_03_sheet.png` (green acid blob) reads as animated because the sprite has dense internal structure (highlight + shadow + edge) where the alpha pulse shows.
 
-2. **The assets folder is a flat 194-file dump with no organization.** Two parallel folders (`sprites/` legacy, `sprites_v2/` current), 88 legacy files of which only 2 are used, 3 `test_cruiser_*` test artifacts in production, 5 single-frame AI base images of which only the procedural sheets are loaded, and no map for the next agent (or the user) to navigate. The user said: *"organiza todos los assets y aislalos por carpetas... de paso para tener un archivo que sirva como mapa de piso... tipo agents.md"*.
+2. **The assets folder is a flat 194-file dump with no organization.** Two parallel folders (`sprites/` legacy, `sprites_v2/` current), 88 legacy files of which only 2 sprites (4 files: `player_bullet`, `enemy_bullet` each with `.png` + `_sheet.png`) are used, 3 `test_cruiser_*` test artifacts in production, 5 single-frame AI base images of which only the procedural sheets are loaded, and no map for the next agent (or the user) to navigate. The user said: *"organiza todos los assets y aislalos por carpetas... de paso para tener un archivo que sirva como mapa de piso... tipo agents.md"*.
 
 ## Goal
 
@@ -45,15 +45,10 @@ stellar_horizon/
         ├── bullets/
         │   ├── CONTEXT.md           ← NEW. Archetype table, WeaponVFX cross-ref
         │   ├── laser_01_sheet.png   ← REGENERATED (strip prompt)
-        │   ├── laser_01.png         ← base single-frame, kept for reference
         │   ├── laser_02_sheet.png   ← REGENERATED
-        │   ├── laser_02.png
         │   ├── laser_03_sheet.png   ← REGENERATED
-        │   ├── laser_03.png
         │   ├── laser_04_sheet.png   ← REGENERATED
-        │   ├── laser_04.png
         │   ├── laser_05_sheet.png   ← REGENERATED
-        │   ├── laser_05.png
         │   ├── player_bullet.png    ← MOVED from sprites/ (legacy)
         │   ├── player_bullet_sheet.png
         │   ├── enemy_bullet.png     ← MOVED from sprites/ (legacy)
@@ -95,8 +90,8 @@ stellar_horizon/
         │   └── boss_*.png           ← base single-frames (6)
         └── _deprecated/
             ├── CONTEXT.md           ← NEW. Why each file is deprecated
-            ├── legacy_sprites/      ← 86 files from old sprites/ (NOT 2 bullets)
-            │                         the 2 active bullets went to bullets/
+            ├── legacy_sprites/      ← 84 files from old sprites/ (NOT the 4 bullet files)
+            │                         the 4 active bullet files went to bullets/
             ├── test_cruiser/        ← 6 files: test_cruiser_A_retro, _B_hd, _C_modern
             └── single_frames/       ← 5 files: laser_0[1-5].png
                                        (original AI bases, kept for re-prompting)
@@ -106,14 +101,16 @@ stellar_horizon/
 
 | | Before | After | Delta |
 |---|---:|---:|---:|
-| `sprites/` (legacy, mostly dead) | 88 | 0 | -88 |
+| `sprites/` (legacy, 2 active) | 88 | 0 | -88 |
 | `sprites_v2/` (current, all active) | 106 | 0 | -106 |
-| `sprites/_deprecated/` | 0 | 97 | +97 |
-| `sprites/{bullets,player,enemies,boss}/` | 0 | 99 | +99 |
-| `CONTEXT.md` files | 0 | 7 | +7 |
-| **Total tracked files** | **194** | **196** | **+2** (only the 7 CONTEXT.md files; rest is just reorganization) |
+| `sprites/_deprecated/` (84 legacy + 6 test_cruiser + 5 laser bases) | 0 | 95 | +95 |
+| `sprites/{bullets,player,enemies,boss}/` (5 laser sheets + 4 bullets + 12 player + 66 enemies + 12 boss) | 0 | 99 | +99 |
+| `CONTEXT.md` files (1 root + 1 sprites/ + 5 sub-folder) | 0 | 7 | +7 |
+| `test_sprite_path_resolver.py` (new test) | 0 | 1 | +1 |
+| `sprite_tests/regen_laser_strips.py` (new tool) | 0 | 1 | +1 |
+| **Total tracked files** | **194** | **203** | **+9** |
 
-The 2-file net increase is the new `CONTEXT.md` files (6 for sub-folders + 1 root = 7). The other 99 files are relocated, not added. Git history is preserved via `git mv`.
+The 9-file net increase is the 7 `CONTEXT.md` files + 1 new test + 1 new regen tool. The other 99 + 95 = 194 files are relocated, not added. Git history is preserved via `git mv`.
 
 ## Components
 
@@ -235,7 +232,7 @@ All path constructions inside `_load_sprites()` (lines 226-232, 259-264, 270-274
 |---|---|---|
 | `assets/sprites/player_bullet.png` + `_sheet.png` | `assets/sprites/bullets/` | `git mv` |
 | `assets/sprites/enemy_bullet.png` + `_sheet.png` | `assets/sprites/bullets/` | `git mv` |
-| `assets/sprites/*` (remaining 86 files) | `assets/sprites/_deprecated/legacy_sprites/` | `git mv` |
+| `assets/sprites/*` (remaining 84 files) | `assets/sprites/_deprecated/legacy_sprites/` | `git mv` |
 | `assets/sprites_v2/test_cruiser_*.png` (6 files) | `assets/sprites/_deprecated/test_cruiser/` | `git mv` |
 | `assets/sprites_v2/laser_0[1-5].png` (5 files) | `assets/sprites/_deprecated/single_frames/` | `git mv` |
 | `assets/sprites_v2/{all other files}` | `assets/sprites/{bullets,player,enemies,boss}/` per their kind | `git mv` |
