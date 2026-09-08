@@ -167,6 +167,31 @@ class GameplayScene(Scene):
         # ThrusterManager handles per-enemy loops in update().
         self.thrusters.set_player("player")
 
+    def _sprite_path(self, name: str) -> Path:
+        """Resolve a sprite name to its absolute path under assets/sprites/.
+
+        Prefix-based: the name encodes its folder. This avoids a manifest
+        and keeps the resolution explicit. Naming convention (enforced
+        here): boss_* -> sprites/boss/; player_* -> sprites/player/;
+        enemy_* -> sprites/enemies/{kind}/ (kind = name[6:].split('_')[0]);
+        laser_* + player_bullet + enemy_bullet -> sprites/bullets/.
+
+        Raises:
+            ValueError: if name does not match any known prefix.
+        """
+        if name.startswith("boss_"):
+            return self.assets_dir / "sprites" / "boss" / f"{name}_sheet.png"
+        # Check exact-match bullet names first so 'player_bullet' and
+        # 'enemy_bullet' do not get caught by the player_/enemy_ prefixes below.
+        if name in ("player_bullet", "enemy_bullet") or name.startswith("laser_"):
+            return self.assets_dir / "sprites" / "bullets" / f"{name}_sheet.png"
+        if name.startswith("player_"):
+            return self.assets_dir / "sprites" / "player" / f"{name}_sheet.png"
+        if name.startswith("enemy_"):
+            kind = name.split("_")[1]  # enemy_scout_v1 -> "scout"
+            return self.assets_dir / "sprites" / "enemies" / kind / f"{name}_sheet.png"
+        raise ValueError(f"_sprite_path: unknown sprite name '{name}'")
+
     def _load_sprites(self) -> None:
         """Load animated sprite sheets from assets/sprites_v2/*_sheet.png.
 
