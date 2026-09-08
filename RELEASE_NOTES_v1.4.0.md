@@ -3,8 +3,8 @@
 **Released:** 2026-09-08
 **Tag:** `v1.4.0`
 **Base:** `ebf390f` (v1.3.0)
-**Head:** `8262b7a`
-**Build:** `StellarHorizon-v1.4.0-win64.zip` (TBD)
+**Head:** `a799f47`
+**Build:** `StellarHorizon-v1.4.0-win64.zip` (35.95 MB, 34.28 MiB, SHA-256 `49ccdc1f…adb4065`)
 
 ---
 
@@ -77,11 +77,12 @@ assets/
     crop_to_content, assemble_sheet, save_reference)
 
   **v1.3.0 → v1.4.0 inherited (+13):** see v1.3.0 release notes.
-- **`test_animation_and_sparks.py` count assertion corrected from
-  magic-number 52 to 51 with accurate comment block** (5 player +
-  20 enemy + 1 thrust + 6 attack + 6 death + **7 kind aliases** +
-  2 bullets + 5 lasers = 52 — boss states are in `_boss_anims` not
-  `_animated`).
+- **`test_animation_and_sparks.py` count assertion corrected**:
+  the spec math originally said 51 but the actual count is 52
+  (5 player + 20 enemy + 1 thrust + 6 attack + 6 death + **7 kind
+  aliases** + 2 bullets + 5 lasers = 52; the 6 boss states are in
+  `_boss_anims` (separate dict), not `_animated`). The fix was a
+  revert 51→52 + a comment block that documents the actual math.
 
 ## Build & runtime
 
@@ -108,3 +109,5 @@ The head of `v1.3.0` was `ebf390f`. v1.4.0 sits on top with 13 commits:
 - `69955e0` docs(assets): add 7 CONTEXT.md files (root 'mapa de piso' + 6 sub)
 - `282783c` feat(lasers): ship yellow plasma + postprocess handles black bg
 - `8262b7a` feat(lasers): regenerate red/blue/green/purple with AI
+- `753c4fe` docs: add v1.4.0 release notes
+- `a799f47` tools: add create_v1_4_0_release.py

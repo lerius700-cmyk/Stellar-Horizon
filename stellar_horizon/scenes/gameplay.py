@@ -35,10 +35,10 @@ from stellar_horizon.waves.wave_manager import WaveManager
 
 # Maps each enemy kind to a list of sprite names that cycle per spawn.
 # Each kind gets 2-4 visually coherent AI-generated variants from the
-# sprites_v2/ library. Variants are procedurally animated (10 frames
-# per sheet, see generate_sheets.py). The draw code uses the first
-# variant as the default (when the cycle hasn't ticked yet) and then
-# rotates.
+# sprites/{enemies/{kind}}/ library. Variants are procedurally animated
+# (10 frames per sheet, see generate_sheets.py). The draw code uses the
+# first variant as the default (when the cycle hasn't ticked yet) and
+# then rotates.
 _ENEMY_SPRITE_CYCLE = {
     "scout":    ("enemy_scout_v1",    "enemy_scout_v2",    "enemy_scout_v3",    "enemy_scout_v4"),
     "cruiser":  ("enemy_cruiser_v1",  "enemy_cruiser_v2",  "enemy_cruiser_v3",  "enemy_cruiser_v4"),

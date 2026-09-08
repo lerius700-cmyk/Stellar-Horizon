@@ -9,9 +9,14 @@
 | `laser_03_sheet.png` | 29×7 | 6 | blue ion (WEAPON_ARCHETYPE 2) |
 | `laser_04_sheet.png` | 29×7 | 6 | green acid (WEAPON_ARCHETYPE 3) |
 | `laser_05_sheet.png` | 29×7 | 6 | purple void (WEAPON_ARCHETYPE 4) |
-| `laser_0[1-5].png` (5 files) | 29×7 | 1 | base single-frame (reference only, not loaded) |
 | `player_bullet.png` + `_sheet.png` | 8×8 | 6 | legacy 8x8 player bullet |
 | `enemy_bullet.png` + `_sheet.png` | 8×8 | 6 | legacy 8x8 enemy bullet |
+
+The 5 `laser_0[1-5].png` single-frame base images (the pre-regen AI
+generations that fed the v1.3.0 procedural sheet expansion) are now
+in `_deprecated/single_frames/` — the v1.4.0 regen produced
+visually-distinct 6-frame sheets, so the old single frames are
+obsolete. See `_deprecated/CONTEXT.md` for why each is kept.
 
 The 5 archetype colors and halo colors (used by the regen prompt):
 - `laser_01`: core `#FFEE44`, halo `#FFAA00`
