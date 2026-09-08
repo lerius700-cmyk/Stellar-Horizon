@@ -54,6 +54,31 @@ class Player:
     # Gold ring count needed per stack gain.
     GOLD_RINGS_PER_STACK = 3
 
+    # 2026-09-08 v1.5: charge mechanic. Per-weapon charge time in
+    # seconds. None = no charge behavior (tap-only). Weapons 5/8 use
+    # 0.0 to mean "continuous (charge time doesn't gate the behavior)".
+    # 2026-09-08: weapons 6/7 use 1.2s/1.5s to fully charge before the
+    # release-time charged shot spawns.
+    CHARGE_TIME_S: tuple[float | None, ...] = (
+        None,  # 0 yellow plasma — tap-only
+        None,  # 1 red pulse — tap-only
+        None,  # 2 blue ion — tap-only
+        None,  # 3 green acid — tap-only
+        None,  # 4 purple void — tap-only
+        0.0,   # 5 orange fireball — continuous beam (no threshold)
+        1.2,   # 6 white piercing — Megaman charged shot at full charge
+        1.5,   # 7 magenta heart — boomerang at full charge
+        0.0,   # 8 cyan ice — continuous piercing stream
+        None,  # 9 rainbow streak — tap-only
+    )
+    # 2026-09-08 v1.5: per-weapon stream spawn interval (for weapon 8).
+    PIERCING_SPAWN_INTERVAL_S: tuple[float, ...] = (
+        0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0,
+        1.5,  # 8 cyan ice — every 1.5s while held
+        0.0,
+    )
+
     __slots__ = (
         "x", "y", "vx", "vy", "lives", "max_lives", "shoot_cooldown",
         "invulnerable_frames", "alive", "firing", "thrusting", "bullets",
@@ -68,6 +93,12 @@ class Player:
         "dying",        # bool - in death animation
         "dying_time",   # seconds elapsed in death sequence
         "dead",         # bool - death animation complete
+        # 2026-09-08 v1.5: charge mechanic state
+        "fire_pressed_this_frame",  # bool - true only on the KEYDOWN frame
+        "fire_released_this_frame", # bool - true only on the KEYUP frame
+        "charge_time",              # seconds fire has been held (0 if not)
+        "charge_complete",          # bool - charge_time >= CHARGE_TIME_S[weapon]
+        "_piercing_spawn_timer",    # seconds since last piercing spawn
     )
 
     def __init__(self, screen_rect: pygame.Rect) -> None:
@@ -103,11 +134,38 @@ class Player:
         self.dying: bool = False
         self.dying_time: float = 0.0
         self.dead: bool = False
+        # 2026-09-08 v1.5: charge mechanic state (reset every frame)
+        self.fire_pressed_this_frame: bool = False
+        self.fire_released_this_frame: bool = False
+        self.charge_time: float = 0.0
+        self.charge_complete: bool = False
+        self._piercing_spawn_timer: float = 0.0
 
     def set_weapon(self, weapon: int) -> None:
         """Switch to a new weapon (0..9). No-op if already on it."""
         if 0 <= weapon < len(self.WEAPON_COOLDOWN_S) and weapon != self.weapon:
             self.weapon = weapon
+            # 2026-09-08 v1.5: switching weapons cancels any in-progress
+            # charge (so the new weapon's charge state starts clean).
+            self.charge_time = 0.0
+            self.charge_complete = False
+            self._piercing_spawn_timer = 0.0
+            # Mark as released so a held key on the previous weapon
+            # doesn't fire a charged shot for the new weapon.
+            self.fire_released_this_frame = True
+
+    def on_fire_pressed(self) -> None:
+        """Called by the scene on the KEYDOWN frame of the fire key.
+        Marks the press so update() can dispatch the tap/charge logic.
+        """
+        self.fire_pressed_this_frame = True
+
+    def on_fire_released(self) -> None:
+        """Called by the scene on the KEYUP frame of the fire key.
+        Marks the release so update() can fire charged shots (weapons
+        6, 7) or end the beam (weapon 5) or stop the stream (weapon 8).
+        """
+        self.fire_released_this_frame = True
 
     def update(self, dt: float, keys, bullets_pool, now: float = 0.0) -> None:
         if self.dying:
@@ -118,6 +176,13 @@ class Player:
             return
         if not self.alive:
             return
+        # 2026-09-08 v1.5: edge-trigger flags from gameplay.py. These
+        # are set by on_fire_pressed/on_fire_released on the KEYDOWN/
+        # KEYUP frames, and consumed/reset here at the start of update.
+        pressed_this_frame = self.fire_pressed_this_frame
+        released_this_frame = self.fire_released_this_frame
+        self.fire_pressed_this_frame = False
+        self.fire_released_this_frame = False
         # Cache the scene time so _spawn_bullet can stamp the bullet
         # with the same value the VFX will read later.
         self._now = now
@@ -147,12 +212,86 @@ class Player:
         self.x = max(self.BOUND_X_MIN, min(self.BOUND_X_MAX, self.x + self.vx * dt))
         self.y = max(self.BOUND_Y_MIN, min(self.BOUND_Y_MAX, self.y + self.vy * dt))
         self.shoot_cooldown = max(0.0, self.shoot_cooldown - dt)
+        # 2026-09-08 v1.5: charge mechanic. Update charge_time and
+        # charge_complete based on whether fire is held. This runs
+        # BEFORE the bullet-spawn block so the spawn decision can
+        # read the current charge state.
+        charge_threshold = self.CHARGE_TIME_S[self.weapon] if self.weapon < len(self.CHARGE_TIME_S) else None
+        if self.firing:
+            # Held: accumulate charge time.
+            if charge_threshold is not None:
+                self.charge_time += dt
+                # `charge_complete` is true once we've hit the threshold
+                # (or immediately for threshold=0.0 continuous weapons).
+                if charge_threshold <= 0.0:
+                    self.charge_complete = True
+                else:
+                    self.charge_complete = self.charge_time >= charge_threshold
+        else:
+            # Released (or never pressed): no charge, but the
+            # fire_released_this_frame flag was already captured at
+            # the top of update() — the scene sets it on KEYUP. The
+            # charged-shot dispatch (weapons 6, 7) happens at the
+            # bottom of this update.
+            self.charge_time = 0.0
+            self.charge_complete = False
+            self._piercing_spawn_timer = 0.0
+        # 2026-09-08 v1.5: per-weapon fire dispatch.
+        #   - Weapons 0-4, 9: tap-only (existing behavior).
+        #   - Weapon 5 (orange fire): continuous beam while held.
+        #   - Weapon 6 (white piercing): tap = bolt, release-after-full-charge = megaman bolt.
+        #   - Weapon 7 (magenta heart): tap = heart, release-after-full-charge = boomerang.
+        #   - Weapon 8 (cyan ice): while held, every 1.5s spawn 1 piercing crystal.
+        # 2026-09-08 v1.5: weapon 8 (cyan ice) piercing-stream timer.
+        # This runs every frame the fire key is held, regardless of
+        # whether the bullet pool has an open slot — the timer should
+        # always advance so the next available slot spawns on time.
+        if self.firing and self.weapon == 8:
+            spawn_interval = self.PIERCING_SPAWN_INTERVAL_S[self.weapon]
+            if spawn_interval > 0.0:
+                self._piercing_spawn_timer += dt
+                if self._piercing_spawn_timer >= spawn_interval:
+                    if bullets_pool and self.shoot_cooldown <= 0.0:
+                        self._spawn_bullet(bullets_pool)
+                        self._piercing_spawn_timer = 0.0
         if self.firing and self.shoot_cooldown <= 0.0 and bullets_pool:
-            self._spawn_bullet(bullets_pool)
-            # Cooldown matches the currently equipped weapon so
-            # switching to a faster weapon (e.g. blue ion) immediately
-            # changes the cadence.
-            self.shoot_cooldown = self.WEAPON_COOLDOWN_S[self.weapon]
+            if self.weapon == 5:
+                # Continuous beam: spawn one small bolt per frame at the
+                # muzzle. The actual BEAM entity is a future addition;
+                # for v1.5 the "beam" is rendered as a stream of small
+                # bolts that share the weapon's archetype sprite.
+                self._spawn_bullet(bullets_pool)
+                self.shoot_cooldown = 0.04  # ~25 bolts/s for a dense beam
+            elif self.weapon == 8:
+                # Piercing stream spawn was already handled above (the
+                # timer advances outside the bullets_pool check, but
+                # the actual spawn needs an open slot). Nothing to do
+                # here.
+                pass
+            else:
+                # All other weapons: normal cooldown-based tap fire.
+                self._spawn_bullet(bullets_pool)
+                # Cooldown matches the currently equipped weapon so
+                # switching to a faster weapon (e.g. blue ion) immediately
+                # changes the cadence.
+                self.shoot_cooldown = self.WEAPON_COOLDOWN_S[self.weapon]
+        # 2026-09-08 v1.5: charged-shot dispatch on release. For
+        # weapons 6 (white piercing) and 7 (magenta heart), holding
+        # the fire key past the charge threshold enables a release-
+        # triggered "charged shot" — a single big bullet with extra
+        # damage and/or special behavior (Megaman bolt, boomerang).
+        # `released_this_frame` is set by the scene on KEYUP.
+        if released_this_frame and self.weapon in (6, 7) and bullets_pool:
+            threshold = self.CHARGE_TIME_S[self.weapon] if self.weapon < len(self.CHARGE_TIME_S) else None
+            # Only fire the charged shot if the player actually
+            # charged (otherwise a quick tap just fires the normal
+            # shot via the cooldown path above, and the release here
+            # is a no-op).
+            if threshold is not None and threshold > 0.0 and self.charge_complete:
+                self._spawn_bullet(bullets_pool)
+                # Short cooldown so the charged shot doesn't stack
+                # with a follow-up normal shot.
+                self.shoot_cooldown = 0.4
         if self.invulnerable_frames > 0:
             self.invulnerable_frames -= 1
         if self.hit_flash > 0:

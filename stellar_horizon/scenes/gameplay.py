@@ -433,6 +433,9 @@ class GameplayScene(Scene):
         # Number-key weapon switch. KEYDOWN events come from the
         # scene_manager; we walk the events once and pick the LAST
         # matching key (so if the user holds two, the latest wins).
+        # 2026-09-08 v1.5: also detect K_SPACE KEYDOWN/KEYUP edges
+        # to drive the new charge mechanic (the per-weapon fire
+        # behavior in Player.update reads these edge flags).
         for ev in events:
             if ev.type == pygame.KEYDOWN and ev.key in self._WEAPON_KEYS:
                 new_weapon = self._WEAPON_KEYS.index(ev.key)
@@ -446,6 +449,10 @@ class GameplayScene(Scene):
                     self.fx.emit_impact(self.player.x + 4,
                                         self.player.y, count=6,
                                         color=(255, 220, 100))
+            elif ev.type == pygame.KEYDOWN and ev.key == pygame.K_SPACE:
+                self.player.on_fire_pressed()
+            elif ev.type == pygame.KEYUP and ev.key == pygame.K_SPACE:
+                self.player.on_fire_released()
         # Player — pool is fixed-size; do NOT filter it (player.update
         # spawns by finding a dead slot, and filtering would shrink
         # the pool until no dead slot exists, blocking new shots).
@@ -733,6 +740,14 @@ class GameplayScene(Scene):
                 size_scale = 0.5 + min(0.5, abs(self.player.vx) / 300.0)  # max 1.0 (~5px flame, ~1/3 ship)
                 self.player.flame.render(surface, self.player.x - 6, self.player.y,
                                           size_scale=size_scale)
+            # 2026-09-08 v1.5: charge aura. Drawn on top of the ship
+            # + flame so the player can see "I'm charging". Per-weapon
+            # color, growing radius, pulse at full charge. No-op for
+            # tap-only weapons (5/6/7/8 only) and when charge_time=0.
+            from stellar_horizon.fx.ship_charge_aura import draw as draw_charge_aura
+            draw_charge_aura(surface, self.player.x, self.player.y,
+                             self.player.weapon, self.player.charge_time,
+                             now=self._elapsed)
         for b in self.player_bullets:
             if b.alive:
                 self._draw_player_bullet_sprite(surface, b, ox, oy)
