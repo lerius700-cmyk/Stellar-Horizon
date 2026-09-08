@@ -20,7 +20,7 @@ These are the spec's project-wide requirements. Every task's requirements implic
 - **Type hints on all public functions.** `from __future__ import annotations` at top.
 - **PIL background removal:** white (255, 255, 255) is the postprocess's chroma key. The AI prompt explicitly asks for white background.
 - **Naming convention enforced by `_sprite_path`:** `boss_*` → boss/; `player_*` → player/; `enemy_*` → enemies/{kind}/; `laser_*` + `player_bullet` + `enemy_bullet` → bullets/. Any name not matching a prefix raises `ValueError`.
-- **Test count assertion:** `test_animation_and_sparks.py:95` asserts `len(s._animated) == 52`. The actual count is 51 (5 player + 20 enemy + 1 thrust + 6 attack + 6 death + 5 laser + 2 bullet + 6 boss). Update to 51 as part of Task 2. Flagged as Risk #3 in the spec.
+- **Test count assertion:** `test_animation_and_sparks.py` asserts `len(s._animated) == 52`. Correct count: 5 player + 20 enemy + 1 thrust + 6 attack + 6 death + 7 kind aliases (scout/cruiser/heavy/bomber/ufo/kamikaze/player, sharing instances with v1 variants) + 2 bullets + 5 lasers = 52. Boss states are in `_boss_anims` (separate dict), NOT in `_animated`. Task 2 includes a comment fix but no assertion change.
 
 ## File Structure
 
@@ -228,7 +228,7 @@ Tests: 413 -> 420."
 
 ---
 
-## Task 2: Refactor `_load_sprites` to use the resolver + fix the 52→51 test bug
+## Task 2: Refactor `_load_sprites` to use the resolver + update test paths
 
 **Files:**
 - Modify: `stellar_horizon/scenes/gameplay.py:_load_sprites` (4 path-construction blocks)
@@ -358,19 +358,23 @@ In `stellar_horizon/tests/test_animation_and_sparks.py`:
 - Lines 70-95: update the comment that says "sprites_v2/" to say "sprites/". Specifically:
   - Line 73-77: change "sprites_v2/ library" to "sprites/ library"; the folder names in the assertion section that follow don't need to change (the test uses `s._animated[name]` keys, not paths).
 
-- [ ] **Step 9: Fix the 52→51 count assertion (Risk #3 from spec)**
+- [ ] **Step 9: Update the test_animation_and_sparks.py comment block**
 
-In `stellar_horizon/tests/test_animation_and_sparks.py:95`, change:
+The assertion `assert len(s._animated) == 52` is CORRECT (the count is 52
+including 7 kind aliases that share AnimatedSprite instances with the v1
+variants but are separate dict keys). The misleading old comment said
+"= 52 total" without explaining the aliases. Replace the comment block:
+
 ```python
+    # Animated cache: 5 player + 20 enemy + 1 thrust + 6 attack + 6
+    # death + 7 kind aliases (scout, cruiser, heavy, bomber, ufo,
+    # kamikaze, player — same AnimatedSprite instances as v1 variants
+    # but separate dict keys) + 2 bullets + 5 lasers = 52.
+    # (Boss states are in _boss_anims, NOT _animated. 2026-09-08.)
     assert len(s._animated) == 52
 ```
-to:
-```python
-    # 5 player + 20 enemy + 1 thrust + 6 attack + 6 death + 5 laser +
-    # 2 bullet + 6 boss = 51. (Previous comment said 52 but the math
-    # was off-by-one. Fixed 2026-09-08 in visual-polish-v3 refactor.)
-    assert len(s._animated) == 51
-```
+
+The assertion stays at 52; the comment is now accurate.
 
 - [ ] **Step 10: Run the test suite — STILL FAILING (intentional)**
 
@@ -399,8 +403,8 @@ structure that Task 3 creates. This commit signals the next task.
 
 Also fixed:
   - test_animation_and_sparks.py:39 writes to tmp_path
-  - test_animation_and_sparks.py:95 assertion 52 -> 51 (off-by-one
-    in the comment that was masking the real count)
+  - test_animation_and_sparks.py:95 comment block updated (assertion
+    stays at 52 — see Global Constraints for the actual count math)
   - Comments updated sprites_v2/ -> sprites/"
 ```
 

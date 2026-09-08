@@ -259,7 +259,7 @@ This globs the entire `assets/` tree, so the new sub-folder structure is include
 **File:** `stellar_horizon/tests/test_animation_and_sparks.py`
 
 - Line 39: `path = Path("stellar_horizon/assets/sprites/_test_anim.png")` — this writes a temp file to the legacy `sprites/` dir. Update to write to the new structure or to `tmp_path`.
-- Lines 70-95: comments reference `sprites_v2/`. Update to `sprites/{bullets,player,enemies,boss}` per the new structure. The 52-count assertion stays the same (the 5 lasers + 1 thrust + 6 attacks + 6 deaths + 5 player + 20 enemy + 2 bullets + 6 boss = 51 actual entries; if the count was 52 before, reconcile the math — see Risks).
+- Lines 70-95: comments reference `sprites_v2/`. Update to `sprites/{bullets,player,enemies,boss}` per the new structure. The 52-count assertion is CORRECT (5 player + 20 enemy + 1 thrust + 6 attacks + 6 deaths + 7 kind aliases + 2 bullets + 5 lasers = 52). The 7 kind aliases (scout/cruiser/heavy/bomber/ufo/kamikaze/player) share AnimatedSprite instances with the v1 variants but are separate dict keys, which is why they count. Boss states are in `_boss_anims` (separate dict), NOT in `_animated`. Just update the comment block to be accurate (the implementer already did this in commit `5ec8e93`).
 
 **File:** `stellar_horizon/tests/test_bullet_render.py`
 
@@ -279,7 +279,7 @@ This globs the entire `assets/` tree, so the new sub-folder structure is include
 
 2. **The animation might still read as static after regen.** If the AI produces 6 frames that are all visually similar (just rotated or recolored), we still have the original problem. Mitigation: the iteration gate (show user 1 archetype first) catches this before the full 5-archetype regen.
 
-3. **Existing test count math is brittle.** The `_animated` count comment says 52, but actual is 51 (5 player + 20 enemy + 1 thrust + 6 attacks + 6 deaths + 5 lasers + 2 bullets + 6 boss = 51). The test may be passing with a magic number that's wrong. Need to recount after the refactor and fix the assertion. This is **discovered during the implementation** — flag for the implementer.
+3. **Test count math in the spec was wrong (corrected).** The original spec claimed the count was 51 (5+20+1+6+6+5+2+6 boss) and Risk #3 said to "fix" the assertion to 51. The implementer caught that this math is wrong on two counts: (a) the 6 boss states are in `_boss_anims` (a separate dict), not `_animated`, so they shouldn't be added; (b) the 7 kind aliases (scout/cruiser/heavy/bomber/ufo/kamikaze/player) ARE in `_animated` and were missing from the count. Correct math: 5+20+1+6+6+7+2+5 = 52. The assertion stays at 52; the comment is now accurate. See commits `51a608e` (initial refactor that applied the wrong 51) and `5ec8e93` (revert to 52 with corrected comment).
 
 4. **`_make_silhouette_set` (gameplay.py:778) might fail for new laser frames.** The current silhouette uses 1.08× scale of the sprite. If the new laser frames have transparent pixels at the edges (postprocess), the silhouette may pick up unexpected pixels. Mitigation: silhouette is a render backdrop; visual review will catch issues.
 
