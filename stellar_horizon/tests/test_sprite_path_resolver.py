@@ -62,3 +62,10 @@ def test_resolves_legacy_bullets(scene):
 def test_unknown_prefix_raises_value_error(scene):
     with pytest.raises(ValueError, match="unknown sprite name"):
         scene._sprite_path("xyz_unknown_thing")
+
+
+def test_malformed_enemy_name_raises_value_error(scene):
+    # "enemy_" alone has no kind, no variant. Used to raise IndexError
+    # from name.split("_")[1]; should raise ValueError instead.
+    with pytest.raises(ValueError, match="malformed enemy name"):
+        scene._sprite_path("enemy_")

@@ -188,7 +188,13 @@ class GameplayScene(Scene):
         if name.startswith("player_"):
             return self.assets_dir / "sprites" / "player" / f"{name}_sheet.png"
         if name.startswith("enemy_"):
-            kind = name.split("_")[1]  # enemy_scout_v1 -> "scout"
+            parts = name.split("_")
+            if len(parts) < 3:
+                raise ValueError(
+                    f"_sprite_path: malformed enemy name '{name}' "
+                    f"(expected enemy_<kind>_<variant>, got {len(parts)} parts)"
+                )
+            kind = parts[1]  # enemy_scout_v1 -> "scout"
             return self.assets_dir / "sprites" / "enemies" / kind / f"{name}_sheet.png"
         raise ValueError(f"_sprite_path: unknown sprite name '{name}'")
 
