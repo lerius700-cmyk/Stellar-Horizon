@@ -193,12 +193,15 @@ class GameplayScene(Scene):
         raise ValueError(f"_sprite_path: unknown sprite name '{name}'")
 
     def _load_sprites(self) -> None:
-        """Load animated sprite sheets from assets/sprites_v2/*_sheet.png.
+        """Load animated sprite sheets from assets/sprites/*_sheet.png.
 
-        2026-09-06 polish pass: switched to AI-generated singles in
-        sprites_v2/ (procedurally expanded to 10-frame sheets by
-        sprite_tests/generate_sheets.py). The old sprites/ assets are
-        kept on disk for reference but are no longer loaded.
+        2026-09-08 polish v3: assets reorganized as SF+SM sub-silo
+        (sprites/{bullets, player, enemies/{kind}, boss}/, plus
+        _deprecated/ for legacy files). All paths are resolved via
+        the prefix-based _sprite_path() method.
+        The sheets are procedurally expanded to 10-frame sprites by
+        sprite_tests/generate_sheets.py from AI-generated single
+        images in each category sub-folder.
 
         Frame counts and dimensions:
           - Player + 4 player variants: 10 frames @ 12 fps, 29x29
