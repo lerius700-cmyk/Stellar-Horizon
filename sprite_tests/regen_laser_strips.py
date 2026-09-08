@@ -62,15 +62,23 @@ def crop_to_content(frame: Image.Image) -> Image.Image:
     """
     if frame.mode != "RGBA":
         frame = frame.convert("RGBA")
-    # Floodfill from (0, 0) with transparent — white becomes alpha 0.
-    # (PIL's ImageDraw.floodfill operates in-place.)
+    # Floodfill the background to transparent. The AI can produce either
+    # a white or a black background (Matrix returned black rectangles
+    # for the strip output of visual-polish-v3 Task 6), so we check the
+    # top-left pixel and floodfill whichever background is present.
     from PIL import ImageDraw
     work = frame.copy()
-    ImageDraw.floodfill(work, (0, 0), value=(0, 0, 0, 0))
+    r, g, b, a = work.getpixel((0, 0))
+    if r > 200 and g > 200 and b > 200:
+        # White background
+        ImageDraw.floodfill(work, (0, 0), value=(0, 0, 0, 0))
+    elif r < 50 and g < 50 and b < 50:
+        # Black background
+        ImageDraw.floodfill(work, (0, 0), value=(0, 0, 0, 0))
     # Find bounding box of non-zero alpha.
     bbox = work.getbbox()  # returns (left, top, right, bottom) or None
     if bbox is None:
-        # Frame is fully white — return an empty transparent image.
+        # Frame is fully background — return an empty transparent image.
         return Image.new("RGBA", (1, 1), (0, 0, 0, 0))
     left, top, right, bottom = bbox
     # 1px padding on left/right/bottom, no top padding (keeps the
