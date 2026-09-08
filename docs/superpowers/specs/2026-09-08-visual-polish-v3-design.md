@@ -214,13 +214,16 @@ def _sprite_path(self, name: str) -> Path:
     """
     if name.startswith("boss_"):
         return self.assets_dir / "sprites" / "boss" / f"{name}_sheet.png"
+    # Check the exact-match bullet names BEFORE the player_/enemy_ prefix
+    # checks, so 'player_bullet' / 'enemy_bullet' route to bullets/ and
+    # not to player/ (which also starts with 'player_').
+    if name in ("player_bullet", "enemy_bullet") or name.startswith("laser_"):
+        return self.assets_dir / "sprites" / "bullets" / f"{name}_sheet.png"
     if name.startswith("player_"):
         return self.assets_dir / "sprites" / "player" / f"{name}_sheet.png"
     if name.startswith("enemy_"):
         kind = name.split("_")[1]  # enemy_scout_v1 -> "scout"
         return self.assets_dir / "sprites" / "enemies" / kind / f"{name}_sheet.png"
-    if name.startswith("laser_") or name in ("player_bullet", "enemy_bullet"):
-        return self.assets_dir / "sprites" / "bullets" / f"{name}_sheet.png"
     raise ValueError(f"_sprite_path: unknown sprite name '{name}'")
 ```
 
