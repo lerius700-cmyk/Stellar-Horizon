@@ -89,10 +89,12 @@ def test_gameplay_scene_loads_sprites_split():
                       Path("stellar_horizon/waves/waves_act1.json"),
                       Path("stellar_horizon/assets"))
     s._load_sprites()
-    # 5 player + 20 enemy + 1 thrust + 6 attack + 6 death + 5 laser +
-    # 2 bullet + 6 boss = 51. (Previous comment said 52 but the math
-    # was off-by-one. Fixed 2026-09-08 in visual-polish-v3 refactor.)
-    assert len(s._animated) == 51
+    # Animated cache: 5 player + 20 enemy + 1 thrust + 6 attack + 6
+    # death + 7 kind aliases (scout, cruiser, heavy, bomber, ufo,
+    # kamikaze, player — same AnimatedSprite instances as v1 variants
+    # but separate dict keys) + 2 bullets + 5 lasers = 52.
+    # (Boss states are in _boss_anims, NOT _animated. 2026-09-08.)
+    assert len(s._animated) == 52
     # 5 player variants.
     for n in ("player_v1", "player_v2", "player_v3", "player_v4", "player_v5"):
         assert n in s._animated
