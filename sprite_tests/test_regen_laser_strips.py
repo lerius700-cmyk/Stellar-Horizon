@@ -11,6 +11,7 @@ from sprite_tests.regen_laser_strips import (
     assemble_sheet,
     save_reference,
     process_strip,
+    main,
 )
 
 
@@ -110,3 +111,29 @@ def test_process_strip_writes_sheet_and_reference(tmp_path: Path):
     # Reference (frame 0) has at least one red pixel somewhere.
     ref_red = sum(1 for p in ref.getdata() if p[0] > 200 and p[1] < 50)
     assert ref_red > 0, "expected red pixels in the reference frame"
+
+
+def test_main_prints_usage_on_wrong_argv(capsys):
+    """main(argv) should print usage to stderr and return 1 on wrong argc."""
+    rc = main(["regen_laser_strips"])
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "Usage" in captured.err
+    assert "input_strip.png" in captured.err
+
+
+def test_main_strips_suffix_to_derive_name(tmp_path: Path, capsys):
+    """main(argv) should strip '_strip' suffix to derive the laser name."""
+    in_path = tmp_path / "laser_42_strip.png"
+    out_dir = tmp_path / "out"
+    # Write a minimal valid strip so process_strip can run.
+    Image.new("RGBA", (174, 42), (255, 255, 255, 255)).save(str(in_path))
+
+    rc = main(["regen_laser_strips", str(in_path), str(out_dir)])
+
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "laser_42_sheet.png" in captured.out
+    assert "laser_42.png" in captured.out
+    assert (out_dir / "laser_42_sheet.png").exists()
+    assert (out_dir / "laser_42.png").exists()
