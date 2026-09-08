@@ -41,11 +41,25 @@ class PlayerBullet:
     # 2026-09-06 visual polish v2: `frame_elapsed`, `frame_index` and
     # `weapon_archetype` drive the 6-frame sheet animation at 12 fps
     # (render code looks up the archetype's laser_NN sheet).
+    # 2026-09-08 v1.5: charged-shot flags. Per-shot behavior is now
+    # parameterizable without subclassing:
+    #   - damage: multiplier on hit (1 = normal, 3 = Megaman bolt).
+    #   - piercing: keep going through enemies instead of dying.
+    #   - returning: boomerang behavior. After `return_at` seconds,
+    #     flip vx to negative so the bullet flies back to the player.
+    #   - hit_count: how many enemies the bullet has hit. Used to
+    #     cap piercing at a sensible limit (no infinite piercing).
     __slots__ = ("x", "y", "vx", "vy", "alive", "spawn_time", "weapon",
                  "frame", "frame_time",
                  "frame_elapsed",   # seconds since spawn (drives frame_index)
                  "frame_index",     # current sheet frame, 0..5
-                 "weapon_archetype")  # index into laser_NN sheet
+                 "weapon_archetype",  # index into laser_NN sheet
+                 "damage",          # hit damage (default 1)
+                 "piercing",        # keep going through enemies
+                 "returning",       # boomerang: flip vx after return_at
+                 "return_timer",    # seconds since spawn (for boomerang)
+                 "return_at",       # seconds before flip (default 0.6)
+                 "hit_count")       # how many enemies hit (for pierce cap)
 
     def __init__(self) -> None:
         self.x = self.y = self.vx = self.vy = 0.0
@@ -57,12 +71,27 @@ class PlayerBullet:
         self.frame_elapsed: float = 0.0
         self.frame_index: int = 0
         self.weapon_archetype: int = 0
+        self.damage: int = 1
+        self.piercing: bool = False
+        self.returning: bool = False
+        self.return_timer: float = 0.0
+        self.return_at: float = 0.6
+        self.hit_count: int = 0
 
     def spawn(self, x: float, y: float, vx: float, vy: float,
-              weapon: int, spawn_time: float) -> None:
+              weapon: int, spawn_time: float,
+              damage: int = 1, piercing: bool = False,
+              returning: bool = False, return_at: float = 0.6) -> None:
         """Activate this bullet for a new shot. Resets animation state
         so the sprite-sheet frame_index restarts at 0 for every shot.
-        `weapon_archetype` is derived from `weapon` via WEAPON_ARCHETYPE."""
+        `weapon_archetype` is derived from `weapon` via WEAPON_ARCHETYPE.
+
+        2026-09-08 v1.5: optional charged-shot flags:
+        - damage: hit damage (default 1; Megaman bolt uses 3).
+        - piercing: keep going through enemies (cyan ice charged).
+        - returning: boomerang — after `return_at` seconds, flip vx
+          to negative so the bullet flies back to the player.
+        """
         self.x, self.y, self.vx, self.vy = x, y, vx, vy
         self.alive = True
         self.spawn_time = spawn_time
@@ -72,10 +101,25 @@ class PlayerBullet:
         )
         self.frame_elapsed = 0.0
         self.frame_index = 0
+        self.damage = damage
+        self.piercing = piercing
+        self.returning = returning
+        self.return_at = return_at
+        self.return_timer = 0.0
+        self.hit_count = 0
 
     def update(self, dt: float) -> None:
         if not self.alive:
             return
+        # 2026-09-08 v1.5: boomerang behavior. If returning, after
+        # `return_at` seconds since spawn, flip vx so the bullet flies
+        # back toward the player. The flip is one-shot — once
+        # reversed, the bullet continues with the new velocity until
+        # it leaves the screen.
+        if self.returning:
+            self.return_timer += dt
+            if self.return_timer >= self.return_at and self.vx > 0:
+                self.vx = -self.vx
         self.x += self.vx * dt
         self.y += self.vy * dt
         # Animate sprite sheet at 8 FPS (4-frame loop)

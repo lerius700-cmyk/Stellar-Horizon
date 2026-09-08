@@ -505,6 +505,9 @@ class GameplayScene(Scene):
             # Bullet-vs-enemy collision. Each hit emits a punchy spark
             # burst (12 sparks + shrapnel + flash) so the impact reads
             # even on a busy frame. Kills add a bigger explosion.
+            # 2026-09-08 v1.5: respect `b.piercing` (cyan ice charged
+            # stream keeps going through enemies) and `b.damage`
+            # (Megaman bolt does 3x, boomerang does 2x).
             for b in self.player_bullets:
                 if not b.alive:
                     continue
@@ -515,8 +518,15 @@ class GameplayScene(Scene):
                         hy = (b.y + e.y) * 0.5
                         self.fx.emit_impact(hx, hy, count=12,
                                             color=(255, 240, 100))
-                        e.take_damage(1)
-                        b.alive = False
+                        e.take_damage(b.damage)
+                        b.hit_count += 1
+                        if not b.piercing:
+                            b.alive = False
+                        # Safety cap: even piercing bullets die after
+                        # 8 hits to prevent infinite life on crowded
+                        # frames.
+                        elif b.hit_count >= 8:
+                            b.alive = False
                         # 2026-09-06 polish: hit SFX was loud enough to
                         # drown out the explosion tail on the next
                         # frame. Halve the volume (0.7 -> 0.35 effective
@@ -578,8 +588,12 @@ class GameplayScene(Scene):
                 if not b.alive:
                     continue
                 if self.boss.alive and b.hitbox().colliderect(self.boss.hitbox()):
-                    self.boss.take_damage(1)
-                    b.alive = False
+                    self.boss.take_damage(b.damage)
+                    b.hit_count += 1
+                    if not b.piercing:
+                        b.alive = False
+                    elif b.hit_count >= 8:
+                        b.alive = False
                     sfx.play_event("hit")
                     if not self.boss.alive:
                         self.score += self.boss.score_value()

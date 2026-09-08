@@ -246,13 +246,16 @@ class Player:
         # This runs every frame the fire key is held, regardless of
         # whether the bullet pool has an open slot — the timer should
         # always advance so the next available slot spawns on time.
+        # The bullet spawned has `piercing=True` so the collision
+        # handler keeps it alive through enemy hits (until the
+        # natural off-screen check kills it).
         if self.firing and self.weapon == 8:
             spawn_interval = self.PIERCING_SPAWN_INTERVAL_S[self.weapon]
             if spawn_interval > 0.0:
                 self._piercing_spawn_timer += dt
                 if self._piercing_spawn_timer >= spawn_interval:
                     if bullets_pool and self.shoot_cooldown <= 0.0:
-                        self._spawn_bullet(bullets_pool)
+                        self._spawn_bullet(bullets_pool, damage=2, piercing=True)
                         self._piercing_spawn_timer = 0.0
         if self.firing and self.shoot_cooldown <= 0.0 and bullets_pool:
             if self.weapon == 5:
@@ -288,7 +291,18 @@ class Player:
             # shot via the cooldown path above, and the release here
             # is a no-op).
             if threshold is not None and threshold > 0.0 and self.charge_complete:
-                self._spawn_bullet(bullets_pool)
+                if self.weapon == 6:
+                    # Megaman charged bolt: 3x damage, normal size.
+                    # The "big shot" reads via the brighter VFX
+                    # (WEAPON_VFX_PARAMS already tuned for weapon 6).
+                    self._spawn_bullet(bullets_pool, damage=3)
+                elif self.weapon == 7:
+                    # Boomerang heart: flies out, then comes back
+                    # after 0.6s. Does 2x damage on the way out
+                    # AND 2x on the return.
+                    self._spawn_bullet(
+                        bullets_pool, damage=2, returning=True, return_at=0.6
+                    )
                 # Short cooldown so the charged shot doesn't stack
                 # with a follow-up normal shot.
                 self.shoot_cooldown = 0.4
@@ -367,7 +381,17 @@ class Player:
     def hitbox(self) -> pygame.Rect:
         return pygame.Rect(int(self.x - 4), int(self.y - 4), 8, 8)
 
-    def _spawn_bullet(self, bullets_pool) -> None:
+    def _spawn_bullet(self, bullets_pool, damage: int = 1,
+                      piercing: bool = False, returning: bool = False,
+                      return_at: float = 0.6) -> None:
+        """Spawn one bullet from the player.
+
+        2026-09-08 v1.5: optional flags for charged shots.
+        - damage: 1 for normal, 3 for Megaman bolt.
+        - piercing: True for cyan ice piercing stream.
+        - returning: True for magenta heart boomerang.
+        - return_at: seconds before boomerang flips direction.
+        """
         from stellar_horizon.entities.bullet import PlayerBullet
         # 2026-09-06 polish: dedicated `laser_fire` SFX (fast sawtooth
         # pitch drop) plays on every shot. The legacy `shoot` /
@@ -376,7 +400,10 @@ class Player:
         # them on top of the laser, blending into a richer "zap".
         from stellar_horizon.audio import sfx
         sfx.play_event("laser_fire")
-        sfx_name = "shoot_charged" if self.weapon in (3, 5, 7) else "shoot"
+        # Charged shots use the heavy SFX; everything else uses the
+        # standard SFX. Charged = damage > 1 OR piercing OR returning.
+        is_charged = damage > 1 or piercing or returning
+        sfx_name = "shoot_charged" if (self.weapon in (3, 5, 7) or is_charged) else "shoot"
         for b in bullets_pool:
             if not b.alive:
                 # 2026-09-06 visual polish v2: delegate the per-shot
@@ -393,6 +420,10 @@ class Player:
                     vy=0.0,
                     weapon=self.weapon,
                     spawn_time=self._now,
+                    damage=damage,
+                    piercing=piercing,
+                    returning=returning,
+                    return_at=return_at,
                 )
                 # Fire SFX (best-effort: no-op if audio is down).
                 from stellar_horizon.audio import sfx
