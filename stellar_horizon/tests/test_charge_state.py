@@ -137,37 +137,49 @@ def test_tap_firing_independent_of_charge(player: Player) -> None:
 
 
 def test_charge_time_s_table_covers_all_5_weapons() -> None:
-    # 2026-09-08 v1.6: CHARGE_TIME_S must have one entry per of the
-    # 5 weapons. Weapons 0/3 use 0.0 (continuous), 1=1.2, 2=1.5,
-    # 4 is None (tap-only).
+    # v1.7: CHARGE_TIME_S[1] was reduced from 1.2 to 1.0 (the
+    # ChargedDisc replaces the v1.6 Megaman bolt and has a tighter
+    # charge window for snappier feel). Weapons 0/3 still use 0.0
+    # (continuous), 2=1.5 unchanged, 4 is None (tap-only).
     assert len(Player.CHARGE_TIME_S) == 5
     assert Player.CHARGE_TIME_S[0] == 0.0
     assert Player.CHARGE_TIME_S[3] == 0.0
-    assert Player.CHARGE_TIME_S[1] == 1.2
+    assert Player.CHARGE_TIME_S[1] == 1.0  # v1.7: was 1.2
     assert Player.CHARGE_TIME_S[2] == 1.5
     assert Player.CHARGE_TIME_S[4] is None
 
 
 def test_charged_shot_fires_on_space_release_for_weapon_1(player: Player) -> None:
-    # 2026-09-08 v1.6: on SPACE KEYUP at full charge, weapon 1 fires
-    # a Megaman charged bolt with damage=3.
+    # v1.7: on SPACE KEYUP at full charge, weapon 1 spawns a
+    # ChargedDisc in the dedicated disc pool (replaces the v1.6
+    # Megaman bolt with damage=3). The disc is NOT a PlayerBullet;
+    # it's a separate entity. This test passes an empty
+    # charged_disc_pool and verifies the disc spawns there.
+    from stellar_horizon.entities.charged_disc import ChargedDisc
     player.set_weapon(1)
     pool = []
     from stellar_horizon.entities.bullet import PlayerBullet
     for _ in range(2):
         pool.append(PlayerBullet())
+    disc_pool = [ChargedDisc(), ChargedDisc()]
     _charge_press(player)
-    for _ in range(15):  # 1.5s, above 1.2s threshold
-        player.update(0.1, {}, pool, now=0.0)
+    # 1.0s is the new threshold (was 1.2s). Use 1.1s to be safely
+    # past it.
+    for _ in range(11):  # 11 * 0.1 = 1.1s, > 1.0s threshold
+        player.update(0.1, {}, pool, now=0.0, charged_disc_pool=disc_pool)
     assert player.charge_complete is True
     _charge_release(player)
     # The release frame consumes the edge flag and dispatches the
-    # charged shot.
-    player.update(0.0, {}, pool, now=0.0)
-    alive = [b for b in pool if b.alive]
-    assert len(alive) == 1
-    assert alive[0].damage == 3
-    assert alive[0].weapon == 1
+    # charged disc.
+    player.update(0.0, {}, pool, now=0.0, charged_disc_pool=disc_pool)
+    # The ChargedDisc is in the disc pool, NOT the bullet pool.
+    alive_bullets = [b for b in pool if b.alive]
+    assert len(alive_bullets) == 0
+    alive_discs = [d for d in disc_pool if d.alive]
+    assert len(alive_discs) == 1
+    # Disc is at the muzzle.
+    assert alive_discs[0].x == player.x + player.BULLET_OFFSET_X
+    assert alive_discs[0].y == player.y
 
 
 def test_charged_shot_fires_on_space_release_for_weapon_2(player: Player) -> None:

@@ -1,4 +1,19 @@
-"""Particle FX layer wrapping Void-Hunter's ParticleEngine."""
+"""Particle FX layer wrapping Void-Hunter's ParticleEngine.
+
+v1.7: extended with three new visual primitives used by the
+ChargedDisc (white piercing weapon 1):
+  - Shockwave: expanding ring, used for the first-hit splash
+    (see fx/shockwave.py for the dataclass).
+  - Screen shake: amplitude+duration kick, additive on top of the
+    existing ScreenShake trauma system. Used for "hard" impacts
+    that need a definite jolt (the ChargedDisc's first hit).
+  - Flash: brief bright disc at a point. Used for the ChargedDisc
+    first hit's "impact white" feedback.
+
+All three are managed by the FxLayer (lifetime ticking, reaping
+dead ones). The shake exposes shake_offset() so the gameplay
+scene can apply the offset on top of the existing ScreenShake.
+"""
 from __future__ import annotations
 
 import math
@@ -10,7 +25,20 @@ from stellar_horizon._systems.systems.particle_engine import (
     P_DUST, P_FIRE, P_FLASH, P_GLOW, P_SHOCKWAVE, P_SHRAPNEL,
     P_SMOKE, P_SPARK, ParticleEngine,
 )
+from stellar_horizon.fx.shockwave import Shockwave
 from stellar_horizon.settings import PARTICLE_POOL
+
+# v1.7: cap on the FxLayer's screen shake so two simultaneous
+# hard impacts don't compound into an unreadable mess.
+SHAKE_AMPLITUDE_CAP: float = 6.0
+# Default life of a fresh shockwave (seconds). Caller can override.
+DEFAULT_SHOCKWAVE_LIFE_S: float = 0.35
+# Default max radius of a fresh shockwave (px). Caller can override.
+DEFAULT_SHOCKWAVE_MAX_RADIUS: float = 50.0
+# Default life of a fresh flash (seconds).
+DEFAULT_FLASH_LIFE_S: float = 0.3
+# Default radius of a fresh flash (px).
+DEFAULT_FLASH_RADIUS: float = 30
 
 # Per-enemy-kind explosion tuning (color, scale, spark count, life).
 _ENEMY_EXPLOSION_COLORS = {
@@ -45,6 +73,25 @@ _BULLET_IMPACT_COLORS = {
 class FxLayer:
     def __init__(self, pool_size: int = PARTICLE_POOL) -> None:
         self.engine = ParticleEngine(pool_size=pool_size)
+        # v1.7: shockwave list -- bounded by simultaneous-shockwave
+        # count (typically <5 in normal play, never pruned explicitly
+        # because the list is short-lived and filtered each update).
+        self.shockwaves: list[Shockwave] = []
+        # v1.7: FxLayer's own screen shake (amplitude + duration
+        # model, additive on top of the existing ScreenShake trauma
+        # in the gameplay scene). Decays linearly: amplitude * (life
+        # / max_life) -> 0. The gameplay scene's draw() combines
+        # both offsets for the final blit offset.
+        self.shake_amplitude: float = 0.0
+        self.shake_life: float = 0.0
+        self.shake_max_life: float = 0.0
+        # v1.7: flash list -- brief bright disc overlays at a point.
+        # Only the most recent flash is rendered (the list is a
+        # stack; old ones are reaped on update).
+        self._flashes: list[tuple[float, float, float,
+                                 tuple[int, int, int],
+                                 float, float]] = []
+        # Fields: (x, y, radius, color, life, max_life)
 
     def emit_sparks(self, x: float, y: float, count: int = 8,
                     color: tuple = (255, 255, 255),
@@ -339,9 +386,148 @@ class FxLayer:
 
     def update(self, dt: float) -> None:
         self.engine.update(dt)
+        # v1.7: tick shockwaves and reap dead ones. list() copy
+        # because we mutate the list during iteration.
+        for sw in self.shockwaves:
+            sw.update(dt)
+        self.shockwaves = [sw for sw in self.shockwaves if sw.alive]
+        # v1.7: tick FxLayer screen shake. Linear decay: amplitude
+        # scales with remaining life. shake_amplitude is held at
+        # its initial value (the "peak" amplitude) so callers can
+        # read the cap; only shake_life ticks down.
+        if self.shake_life > 0.0:
+            self.shake_life = max(0.0, self.shake_life - dt)
+            if self.shake_life <= 0.0:
+                self.shake_amplitude = 0.0
+                self.shake_max_life = 0.0
+        # v1.7: tick flashes. Reap dead.
+        if self._flashes:
+            new_flashes = []
+            for fl in self._flashes:
+                _x, _y, _r, _c, life, _max_life = fl
+                life -= dt
+                if life > 0.0:
+                    new_flashes.append(
+                        (_x, _y, _r, _c, life, _max_life)
+                    )
+            self._flashes = new_flashes
 
     def draw(self, surface) -> None:
         self.engine.draw(surface)
+        # v1.7: shockwaves drawn on top of the particle layer.
+        # Each is a hollow circle (stroke 2) whose alpha lerps
+        # from 255 to 0 over its lifetime.
+        for sw in self.shockwaves:
+            if not sw.alive:
+                continue
+            alpha = sw.alpha_255()
+            if alpha <= 0:
+                continue
+            # SRCALPHA temp surface so we can stroke with alpha.
+            r = max(1, int(sw.radius))
+            size = r * 2 + 4
+            tmp = pygame.Surface((size, size), pygame.SRCALPHA)
+            pygame.draw.circle(
+                tmp, (*sw.color, alpha),
+                (size // 2, size // 2), r, sw.width,
+            )
+            surface.blit(tmp, (int(sw.x - size // 2),
+                               int(sw.y - size // 2)))
+        # v1.7: flash overlays. Each is a filled translucent disc
+        # at the impact point. Drawn after shockwaves so the bright
+        # center "punch" reads on top of the expanding ring.
+        for fl in self._flashes:
+            x, y, radius, color, life, max_life = fl
+            if max_life <= 0.0:
+                continue
+            progress = 1.0 - (life / max_life)
+            alpha = int(255 * (1.0 - progress))
+            if alpha <= 0:
+                continue
+            r = max(1, int(radius * (1.0 + 0.3 * progress)))
+            size = r * 2 + 4
+            tmp = pygame.Surface((size, size), pygame.SRCALPHA)
+            pygame.draw.circle(
+                tmp, (*color, alpha),
+                (size // 2, size // 2), r,
+            )
+            surface.blit(tmp, (int(x - size // 2),
+                               int(y - size // 2)))
+
+    def shake_offset(self) -> tuple[float, float]:
+        """Return the FxLayer's current shake offset (px). Random
+        in (-amp, +amp) for x, 0 for y (vertical shake on a
+        horizontal shmup reads as "off" -- the playfield is taller
+        than it is wide and a vertical jitter fights the player's
+        position). Returns (0, 0) when no shake is active.
+        """
+        if self.shake_life <= 0.0 or self.shake_max_life <= 0.0:
+            return (0.0, 0.0)
+        # Amplitude scales with remaining life (linear decay).
+        progress = self.shake_life / self.shake_max_life
+        amp = self.shake_amplitude * progress
+        # Random within (-amp, +amp). random.uniform returns a
+        # float in [a, b].
+        return (random.uniform(-amp, amp), 0.0)
+
+    # ----- v1.7: new FX primitives for the ChargedDisc -----
+
+    def emit_shockwave(self, x: float, y: float,
+                       radius: float = DEFAULT_SHOCKWAVE_MAX_RADIUS,
+                       color: tuple[int, int, int] = (255, 255, 255),
+                       life: float = DEFAULT_SHOCKWAVE_LIFE_S) -> None:
+        """Spawn an expanding ring at (x, y). The ring starts at
+        radius 0 and grows to `radius` over `life` seconds while
+        fading from full alpha to 0.
+        """
+        self.shockwaves.append(
+            Shockwave(
+                x=x, y=y,
+                radius=0.0, max_radius=float(radius),
+                life=float(life), max_life=float(life),
+                color=color, width=2,
+            )
+        )
+
+    def add_screen_shake(self, amplitude: float,
+                         duration: float) -> None:
+        """Kick the FxLayer's screen shake. `amplitude` is the peak
+        offset in px (capped at SHAKE_AMPLITUDE_CAP=6.0). `duration`
+        is the total decay time in seconds. New kicks are
+        max-merged with the current state: the new kick only
+        raises the amplitude / life if it's stronger than the
+        in-flight one, so a 1px kick doesn't reset a 5px shake
+        that's still decaying.
+        """
+        if duration <= 0.0 or amplitude <= 0.0:
+            return
+        amp = min(float(amplitude), SHAKE_AMPLITUDE_CAP)
+        dur = float(duration)
+        if self.shake_life <= 0.0 or amp > self.shake_amplitude:
+            # Fresh shake (or stronger than the current one).
+            self.shake_amplitude = amp
+            self.shake_max_life = dur
+            self.shake_life = dur
+        # else: keep the existing shake. A weaker kick mid-decay
+        # doesn't reset the clock; the spec's anti-pattern note
+        # "Screen shake acumula 2 eventos simultaneos" wants the
+        # cap to win, not the latest input.
+
+    def add_flash(self, x: float, y: float,
+                  radius: float = DEFAULT_FLASH_RADIUS,
+                  color: tuple[int, int, int] = (255, 255, 255),
+                  duration: float = DEFAULT_FLASH_LIFE_S) -> None:
+        """Spawn a brief bright disc at (x, y). Used for the
+        ChargedDisc first-hit "punch". Multiple flashes stack
+        (each one renders), so a flurry of hits produces a
+        short-lived strobe -- which is the intended read.
+        """
+        if duration <= 0.0:
+            return
+        self._flashes.append(
+            (float(x), float(y), float(radius), color,
+             float(duration), float(duration))
+        )
 
     @property
     def particles(self):

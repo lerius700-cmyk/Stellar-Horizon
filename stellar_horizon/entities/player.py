@@ -6,6 +6,15 @@ v1.6 control scheme:
   SPACE (hold+rel)-> tier-2 charged shot per weapon (charge mechanic)
                      or continuous beam for weapon 0
   WASD / arrows   -> movement
+
+v1.7 weapon 1 (white piercing) update:
+  SPACE held 1.0s (was 1.2s) -> spawns a ChargedDisc on release,
+  a 40px-radius piercing energy ball that hits up to 4 enemies
+  (8x first, 3x secondary). The disc is a separate entity
+  (entities/charged_disc.py) with its own pool of 2; passed
+  via the optional `charged_disc_pool` arg of update(). Falls
+  back to a no-op if the pool is None (preserves headless tests
+  that don't wire it up).
 """
 from __future__ import annotations
 
@@ -74,7 +83,7 @@ class Player:
     # in v1.5). Threshold semantics unchanged.
     CHARGE_TIME_S: tuple[float | None, ...] = (
         0.0,   # 0 orange fire      -- continuous beam
-        1.2,   # 1 white piercing   -- Megaman charged shot at full charge
+        1.0,   # 1 white piercing   -- v1.7: ChargedDisc on release (was 1.2s)
         1.5,   # 2 magenta heart    -- boomerang at full charge
         0.0,   # 3 cyan ice         -- continuous piercing stream
         None,  # 4 rainbow streak   -- tap-only (SPACE is no-op)
@@ -202,7 +211,8 @@ class Player:
         """
         self.charge_released_this_frame = True
 
-    def update(self, dt: float, keys, bullets_pool, now: float = 0.0) -> None:
+    def update(self, dt: float, keys, bullets_pool, now: float = 0.0,
+               charged_disc_pool=None) -> None:
         if self.dying:
             # Death sequence: tick timer, skip all normal logic
             self.dying_time += dt
@@ -305,7 +315,13 @@ class Player:
         # holding SPACE past the charge threshold enables a release-
         # triggered charged shot -- a single big bullet with extra
         # damage and/or special behavior (Megaman bolt, boomerang).
-        if charge_released and self.weapon in (1, 2) and bullets_pool:
+        # v1.7: weapon 1's charged shot is now a ChargedDisc (pool
+        # of 2, separate from the PlayerBullet pool). The disc is
+        # a 40px-radius energy ball that pierces up to 4 enemies
+        # (8x on the first hit, 3x on the others). See
+        # entities/charged_disc.py for the entity and
+        # fx/charged_disc_renderer.py for the procedural render.
+        if charge_released and self.weapon in (1, 2):
             threshold = self.CHARGE_TIME_S[self.weapon] if self.weapon < len(self.CHARGE_TIME_S) else None
             # Use the captured charge_complete (pre-reset) so a
             # release after a full charge still fires the charged
@@ -313,15 +329,28 @@ class Player:
             # would have already reset charge_complete to False.
             if threshold is not None and threshold > 0.0 and charge_complete_before_release:
                 if self.weapon == 1:
-                    # Megaman charged bolt: 3x damage, normal size.
-                    self._spawn_bullet(bullets_pool, damage=3)
+                    # v1.7: ChargedDisc on release. The pool is
+                    # optional (None = no ChargedDisc subsystem
+                    # wired up; falls back to a no-op so unit tests
+                    # that don't care about the disc still pass).
+                    # If all 2 pool slots are alive, the second
+                    # spawn is a silent no-op (the spec says: no
+                    # queue, no error).
+                    if charged_disc_pool is not None:
+                        muzzle_x = self.x + self.BULLET_OFFSET_X
+                        muzzle_y = self.y
+                        for slot in charged_disc_pool:
+                            if not slot.alive:
+                                slot.spawn(muzzle_x, muzzle_y, now)
+                                break
                 elif self.weapon == 2:
                     # Boomerang heart: flies out, then comes back
                     # after 0.6s. Does 2x damage on the way out
                     # AND 2x on the return.
-                    self._spawn_bullet(
-                        bullets_pool, damage=2, returning=True, return_at=0.6
-                    )
+                    if bullets_pool:
+                        self._spawn_bullet(
+                            bullets_pool, damage=2, returning=True, return_at=0.6
+                        )
                 # Short cooldown so the charged shot doesn't stack
                 # with a follow-up normal shot.
                 self.shoot_cooldown = 0.4

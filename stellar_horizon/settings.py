@@ -19,3 +19,9 @@ PLAYER_BULLET_POOL: int = 32
 ENEMY_BULLET_POOL: int = 64
 ENEMY_POOL: int = 32
 PARTICLE_POOL: int = 600
+# v1.7: ChargedDisc pool for weapon 1 (white piercing) on
+# SPACE release. The disc is large and slow enough that 2
+# simultaneous shots is an edge case (player spams SPACE); the
+# pool of 2 handles it without dropping the second shot. If
+# both slots are alive, the second spawn is a silent no-op.
+CHARGED_DISC_POOL: int = 2

@@ -13,9 +13,11 @@ from stellar_horizon.audio.thrusters import ThrusterManager
 from stellar_horizon.core.scene_manager import Scene, SceneName
 from stellar_horizon.entities.boss import Boss, BossPhase
 from stellar_horizon.entities.bullet import EnemyBullet, PlayerBullet
+from stellar_horizon.entities.charged_disc import ChargedDisc
 from stellar_horizon.entities.enemy import Enemy
 from stellar_horizon.entities.player import Player
 from stellar_horizon.entities.powerup import PowerUp, PowerUpKind, roll_enemy_drop
+from stellar_horizon.fx import charged_disc_renderer
 from stellar_horizon.fx.bullet_vfx import (
     WEAPON_VFX_PARAMS,
     compute as compute_bullet_vfx,
@@ -24,7 +26,8 @@ from stellar_horizon.fx.dust import DustStream
 from stellar_horizon.fx.particles import FxLayer
 from stellar_horizon.fx.screen_shake import ScreenShake
 from stellar_horizon.settings import (
-    ENEMY_BULLET_POOL, INTERNAL_W, INTERNAL_H, PLAYER_BULLET_POOL,
+    CHARGED_DISC_POOL, ENEMY_BULLET_POOL, INTERNAL_W, INTERNAL_H,
+    PLAYER_BULLET_POOL,
 )
 from stellar_horizon.ui.animated_sprite import AnimatedSprite
 from stellar_horizon.ui.backgrounds import Background
@@ -97,6 +100,14 @@ class GameplayScene(Scene):
         # fire "lanzallamas"). Only one beam at a time, not a pool.
         from stellar_horizon.entities.beam import Beam
         self._beam: Beam = Beam()
+        # v1.7: ChargedDisc pool for weapon 1 (white piercing) on
+        # SPACE release. The disc is a separate entity (not a
+        # PlayerBullet) with its own pool. The player.update()
+        # spawn path finds a free slot; if both are alive, the
+        # second spawn is a silent no-op (no queue, per spec 6.3).
+        self.charged_discs: list[ChargedDisc] = [
+            ChargedDisc() for _ in range(CHARGED_DISC_POOL)
+        ]
         # Power-up rings spawned by enemy kills and (rarely) by the
         # boss. Updated + drawn alongside the other entities.
         self.powerups: list[PowerUp] = []
@@ -568,8 +579,12 @@ class GameplayScene(Scene):
         # Player — pool is fixed-size; do NOT filter it (player.update
         # spawns by finding a dead slot, and filtering would shrink
         # the pool until no dead slot exists, blocking new shots).
+        # v1.7: also pass the ChargedDisc pool so weapon 1 can
+        # spawn a disc on SPACE release at full charge. Other
+        # weapons ignore the pool.
         self.player.update(dt, self._keys, self.player_bullets,
-                           now=self._elapsed)
+                           now=self._elapsed,
+                           charged_disc_pool=self.charged_discs)
         # 2026-09-08 v1.6: beam management for weapon 0 (orange fire
         # "lanzallamas"). The beam is alive while the player is
         # holding SPACE (charging) on weapon 0. While alive, its
@@ -603,6 +618,22 @@ class GameplayScene(Scene):
                                 particles_per_frame=vfx.particles_per_frame,
                             )
                 b.update(dt)
+        # v1.7: ChargedDisc update. Each disc in the pool ticks
+        # its own state machine (FLYING -> FADING -> dead). The
+        # disc's spawn was already done by player.update() above
+        # (when weapon 1 + SPACE release at full charge). We
+        # only tick existing discs here; the spawn is the player's
+        # responsibility, the collision (below) is the scene's.
+        for disc in self.charged_discs:
+            if disc.alive:
+                disc.update(dt)
+                # Per-frame trail emission for in-flight discs.
+                # 1-2 white particles spawn at (x - 4, y) per
+                # frame, lifetime 0.2s. The renderer's
+                # emit_trail() is a no-op during FADING (the
+                # burst rings already imply the trail).
+                if self.fx is not None:
+                    charged_disc_renderer.emit_trail(self.fx, disc)
         # Wave manager + enemies
         if self.wave_manager and not self.boss_active:
             self.wave_manager.update(dt)
@@ -681,6 +712,81 @@ class GameplayScene(Scene):
                             if drop_kind is not None:
                                 self._spawn_powerup(e.x, e.y, drop_kind)
                         break
+            # v1.7: ChargedDisc-vs-enemy collision. The disc
+            # pierces up to MAX_HITS=4 enemies: 8x on the first hit
+            # (with shockwave + screen shake + flash + splash) and
+            # 3x on the secondary hits (with the standard per-weapon
+            # impact). AABB accuracy 100% via enemy.hitbox(). The
+            # disc itself never dies from a hit (only from going
+            # off-screen or after the fade-out timer).
+            from stellar_horizon.fx.weapon_impact import get_params
+            for disc in self.charged_discs:
+                if not disc.alive:
+                    continue
+                for e in self.wave_manager.spawned_enemies:
+                    if not e.alive:
+                        continue
+                    if not disc.hits(e):
+                        continue
+                    if disc.hit_count == 0:
+                        # First hit: 8x damage, full feedback
+                        # (shockwave + shake + flash + splash).
+                        e.take_damage(8)
+                        hx = (disc.x + e.x) * 0.5
+                        hy = (disc.y + e.y) * 0.5
+                        if self.fx is not None:
+                            self.fx.emit_impact_weapon(
+                                hx, hy, 1.0, 0.0,
+                                get_params(1),  # white piercing
+                            )
+                            # Shockwave (white ring, 50px max).
+                            self.fx.emit_shockwave(
+                                e.x, e.y, radius=50,
+                                color=(255, 255, 255), life=0.35,
+                            )
+                            # Hard screen shake (3px, 0.15s).
+                            self.fx.add_screen_shake(3.0, 0.15)
+                            # Bright white flash at impact.
+                            self.fx.add_flash(
+                                e.x, e.y, radius=30,
+                                color=(255, 255, 255), duration=0.3,
+                            )
+                        sfx.play_event(sfx.CHARGED_HIT, volume=0.7)
+                    elif disc.hit_count <= ChargedDisc.MAX_HITS:
+                        # Secondary hit (2..4): 3x damage, splash
+                        # only (no shockwave / shake / flash).
+                        e.take_damage(3)
+                        if self.fx is not None:
+                            self.fx.emit_impact_weapon(
+                                e.x, e.y, 1.0, 0.0,
+                                get_params(1),  # white piercing
+                            )
+                        sfx.play_event(
+                            sfx.CHARGED_HIT_SECONDARY, volume=0.4
+                        )
+                    # else: 5+ hits ignored silently (cap at 4).
+                    # Register the hit on the disc (increments
+                    # hit_count, stamps last_hit_time for the
+                    # FLYING -> FADING timer).
+                    disc.register_hit()
+                    # If the disc just hit its cap, also tally
+                    # kill score + kill SFX + powerup drop.
+                    if not e.alive:
+                        self.score += e.score_value()
+                        trauma = 0.10
+                        kill_sfx = "enemy_explode"
+                        if e.kind in ("heavy", "bomber"):
+                            trauma = 0.22
+                        if e.kind == "kamikaze":
+                            trauma = 0.30
+                        self.fx.emit_impact(
+                            e.x, e.y, count=14, color=(255, 200, 80),
+                        )
+                        self.shake.add_trauma(trauma)
+                        sfx.play_event(kill_sfx)
+                        drop_kind = roll_enemy_drop()
+                        if drop_kind is not None:
+                            self._spawn_powerup(e.x, e.y, drop_kind)
             # Enemy-vs-player collision. Kamikaze deals 2 damage (its
             # contact_damage); everything else deals 1. Every contact
             # also gets a spark burst.
@@ -734,6 +840,53 @@ class GameplayScene(Scene):
                     if not self.boss.alive:
                         self.score += self.boss.score_value()
                         self.fx.emit_explosion(self.boss.x, self.boss.y, scale=3.0)
+                        self.shake.add_trauma(0.50)
+                        sfx.play_event("explode_boss")
+            # v1.7: ChargedDisc vs boss. Same damage profile as
+            # vs regular enemies: 8x on the first hit, 3x on
+            # secondary (max 4). The boss is large enough that
+            # only one disc can ever hit it on the same frame;
+            # the per-disc hit_count cap still applies so a
+            # single disc can't multi-stack damage past MAX_HITS.
+            if self.boss.alive:
+                for disc in self.charged_discs:
+                    if not disc.alive:
+                        continue
+                    if not disc.hits(self.boss):
+                        continue
+                    if disc.hit_count == 0:
+                        self.boss.take_damage(8)
+                        if self.fx is not None:
+                            self.fx.emit_impact_weapon(
+                                self.boss.x, self.boss.y, 1.0, 0.0,
+                                get_params(1),
+                            )
+                            self.fx.emit_shockwave(
+                                self.boss.x, self.boss.y, radius=70,
+                                color=(255, 255, 255), life=0.4,
+                            )
+                            self.fx.add_screen_shake(4.0, 0.20)
+                            self.fx.add_flash(
+                                self.boss.x, self.boss.y, radius=50,
+                                color=(255, 255, 255), duration=0.3,
+                            )
+                        sfx.play_event(sfx.CHARGED_HIT, volume=0.7)
+                    elif disc.hit_count <= ChargedDisc.MAX_HITS:
+                        self.boss.take_damage(3)
+                        if self.fx is not None:
+                            self.fx.emit_impact_weapon(
+                                self.boss.x, self.boss.y, 1.0, 0.0,
+                                get_params(1),
+                            )
+                        sfx.play_event(
+                            sfx.CHARGED_HIT_SECONDARY, volume=0.4
+                        )
+                    disc.register_hit()
+                    if not self.boss.alive:
+                        self.score += self.boss.score_value()
+                        self.fx.emit_explosion(
+                            self.boss.x, self.boss.y, scale=3.0,
+                        )
                         self.shake.add_trauma(0.50)
                         sfx.play_event("explode_boss")
             if self.boss.alive and self.boss.hitbox().colliderect(self.player.hitbox()):
@@ -845,7 +998,19 @@ class GameplayScene(Scene):
         return
 
     def draw(self, surface: pygame.Surface) -> None:
-        ox, oy = self.shake.offset()
+        # v1.7: combine the existing trauma-based ScreenShake offset
+        # with the FxLayer's amplitude-based shake offset. The
+        # FxLayer's shake is the "hard" kick used by the
+        # ChargedDisc's first hit; the trauma shake is the standard
+        # softer shake used by enemy kills. Both add together so
+        # hard impacts feel snappy without erasing the trauma
+        # shake's random character.
+        ox_t, oy_t = self.shake.offset()
+        if self.fx is not None:
+            ox_f, oy_f = self.fx.shake_offset()
+        else:
+            ox_f, oy_f = 0.0, 0.0
+        ox, oy = ox_t + ox_f, oy_t + oy_f
         bg_surface = pygame.Surface((INTERNAL_W, INTERNAL_H))
         self.background.draw(bg_surface)
         surface.blit(bg_surface, (int(ox), int(oy)))
@@ -898,16 +1063,33 @@ class GameplayScene(Scene):
             # the long-sheet preview (horizontal bar ahead of the
             # muzzle). See fx/ship_charge_orb.py for the geometry.
             # No-op when charge_time=0 or weapon is tap-only (4).
-            from stellar_horizon.fx.ship_charge_orb import draw as draw_charge_orb
-            draw_charge_orb(
-                surface,
-                self.player.x + self.player.BULLET_OFFSET_X,
-                self.player.y,
-                self.player.weapon,
-                self.player.charge_time,
-                self.player.charging,
-                now=self._elapsed,
-            )
+            # v1.7: weapon 1 (white piercing) gets the ChargedDisc
+            # preview INSTEAD of the generic orb -- the orb's color
+            # palette is per-weapon and the disc is a different
+            # visual (white energy ball vs colored plasma sphere),
+            # so the generic orb would clash. Other weapons keep
+            # the orb unchanged.
+            if self.player.weapon == 1:
+                full_charge = Player.CHARGE_TIME_S[1] or 1.0
+                charged_disc_renderer.draw_charging_preview(
+                    surface,
+                    self.player.x + self.player.BULLET_OFFSET_X,
+                    self.player.y,
+                    self.player.charge_time,
+                    full_charge,
+                    now=self._elapsed,
+                )
+            else:
+                from stellar_horizon.fx.ship_charge_orb import draw as draw_charge_orb
+                draw_charge_orb(
+                    surface,
+                    self.player.x + self.player.BULLET_OFFSET_X,
+                    self.player.y,
+                    self.player.weapon,
+                    self.player.charge_time,
+                    self.player.charging,
+                    now=self._elapsed,
+                )
         # 2026-09-08 v1.6: beam (weapon 0 "lanzallamas"). Drawn on
         # top of the player so the body looks like it emerges from
         # the muzzle, but before the bullets so flying bolts are
@@ -918,6 +1100,17 @@ class GameplayScene(Scene):
         for b in self.player_bullets:
             if b.alive:
                 self._draw_player_bullet_sprite(surface, b, ox, oy)
+        # v1.7: ChargedDisc bodies. Drawn after the player bullets
+        # so the disc reads as "in front of" any other projectile
+        # (it's the most recent fire and the largest, so it should
+        # be visually dominant). The procedural render handles
+        # FLYING + FADING states; the trail particles are already
+        # in the FxLayer pool and render via fx.draw() below.
+        for disc in self.charged_discs:
+            if disc.alive:
+                charged_disc_renderer.draw(
+                    surface, disc, now=self._elapsed,
+                )
         for b in self.enemy_bullets:
             if b.alive:
                 self._draw_enemy_bullet_sprite(surface, b, ox, oy)
