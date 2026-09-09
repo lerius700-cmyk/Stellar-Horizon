@@ -6,25 +6,26 @@
 
 ## Estado del proyecto
 
-- **Version:** v1.7.1 (tagged 2026-09-09).
-- **Status:** Stable, live on GitHub Releases. ChargedDisc + re-implemented rings + ChargedDisc SFX shipped.
-- **Test baseline:** 510 passed, 0 failed (was 311 in v1.1.0).
-- **Latest tag:** `v1.7.1` at commit `1069f7d` (release notes).
+- **Version:** v1.7.2 (tagged 2026-09-09).
+- **Status:** Stable, live on GitHub Releases. All 6 v1.7+ SFX events are now real (not silent no-ops).
+- **Test baseline:** 514 passed, 0 failed (was 311 in v1.1.0).
+- **Latest tag:** `v1.7.2` at commit `7dc198c` (release notes).
   Gameplay work commits: `9e20833` (ChargedDisc) + `350c869`
   (power-up rings re-implementation) + `5abc32e` (synth pass
-  for ChargedDisc SFX, 4 events).
+  for ChargedDisc SFX) + `94c59e7` (synth pass for ring pickup
+  SFX).
 
 ## Última sesión
 
-**2026-09-09 — v1.7.1: ChargedDisc SFX + re-implemented rings + ChargedDisc**
+**2026-09-09 — v1.7.2: ring pickup SFX (closes the v1.7 audio loop)**
 
-- **v1.7.1 release (commit 1069f7d)**: ChargedDisc SFX (4 events) now backed by real `.wav` files via the synth module. v1.7.0 was technically incomplete (audio was silent). Released at https://github.com/lerius700-cmyk/Stellar-Horizon/releases/tag/v1.7.1. Download: `StellarHorizon-v1.7.1-win64.zip` (34.6 MB).
-- **v1.7.0 release (commit 60feb18)**: ChargedDisc + re-implemented rings. ChargedDisc: 40px radius, 1100 px/s, max 4 hits, 8x first / 3x secondary, fades over 0.4s. CHARGE_TIME_S[1] 1.2s → 1.0s. New FxLayer primitives (`emit_shockwave`, `add_screen_shake` capped at 6px, `add_flash`). PowerUp re-implementation: 18px ring + 22px glow, drop rates 5%/10% → 18%/25%, drop VFX, idle bobbing + glow pulse, magnet hint, drop physics, floating "+1 LIFE" / "+1 MAX" popups.
-- **Synth pass (commit 5abc32e)**: 4 new `_SfxSpec` entries in `synth.py` (charge_hum_white, charged_release, charged_hit, charged_hit_secondary) + 7 new tests. Triangle wave (no pure sine available in synth).
-- **Tests:** 510 passing (was 487 in v1.6.0, +23 across v1.7.0/v1.7.1 work).
-- **2 ring pickup sfx still pending** synth pass: `ring_pickup_gold`, `ring_pickup_silver`.
+- **v1.7.2 release (commit 7dc198c)**: 2 ring pickup SFX events now real. `ring_pickup_gold` (triangle 523.25Hz, 0.12s, vol 0.55) and `ring_pickup_silver` (triangle 523.25Hz, 0.10s, vol 0.50). All 6 v1.7+ SFX events are now real (4 ChargedDisc from v1.7.1 + 2 ring pickups from this release). Synth pass: 2 new `_SfxSpec` entries in `_systems/audio/synth.py` + 4 new tests. Released at https://github.com/lerius700-cmyk/Stellar-Horizon/releases/tag/v1.7.2. Download: `StellarHorizon-v1.7.2-win64.zip` (34.6 MB).
+- **v1.7.1 release (commit 1069f7d)**: ChargedDisc SFX (4 events) real. Synth pass: 4 new `_SfxSpec` entries in `_systems/audio/synth.py` + 7 new tests.
+- **v1.7.0 release (commit 60feb18)**: ChargedDisc (40px piercing disc, 8x/3x, shockwave+shake+flash) + re-implemented power-up rings (18px, drop VFX, bobbing, magnet hint, popups).
+- **Tests:** 514 passing (was 487 in v1.6.0, +27 across v1.7.0/v1.7.1/v1.7.2).
 - **Token rotation done:** `STELLAR_HORIZON_TOKEN` was leaked via `$env:VAR` (PowerShell prints bare variable expressions). User regenerated via `setx HKCU\Environment`. New safe pattern: `$env:STELLAR_HORIZON_TOKEN = $null` before running `tools/create_v1_6_0_release.py` so the script falls back to the registry-stored token.
 - **DEPRECATED on disk:** `fx/ship_charge_aura.py` (v1.5 charge aura) — kept per memory rule 2026-09-07 (no borrar sin pedir).
+- **No pending audio work** for v1.7 — all 6 SFX events are real.
 
 ---
 
