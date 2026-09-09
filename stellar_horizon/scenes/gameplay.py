@@ -12,7 +12,7 @@ from stellar_horizon.audio import sfx
 from stellar_horizon.audio.thrusters import ThrusterManager
 from stellar_horizon.core.scene_manager import Scene, SceneName
 from stellar_horizon.entities.boss import Boss, BossPhase
-from stellar_horizon.entities.bullet import EnemyBullet, PlayerBullet, WEAPON_ARCHETYPE
+from stellar_horizon.entities.bullet import EnemyBullet, PlayerBullet
 from stellar_horizon.entities.enemy import Enemy
 from stellar_horizon.entities.player import Player
 from stellar_horizon.entities.powerup import PowerUp, PowerUpKind, roll_enemy_drop
@@ -116,12 +116,6 @@ class GameplayScene(Scene):
         # and applies a per-weapon VFX on top (alpha pulse, scale
         # pulse, soft halo).
         self._laser_sprites: dict = {}
-        # 2026-09-08 v1.5: 4 long (150x50, 6 frames) "charge preview"
-        # sheets for the charged weapons (5/6/7/8). Keyed by weapon
-        # index, not archetype — the draw code looks up by
-        # self.player.weapon. Drawn near the muzzle with alpha ramping
-        # in as charge_time grows, scaled 1/5 (30x10 on screen).
-        self._laser_long_sprites: dict = {}
         # Per-kind counter used to cycle through enemy sprite variants
         # so consecutive spawns of the same kind look different.
         self._enemy_sprite_idx: dict = {}
@@ -360,45 +354,19 @@ class GameplayScene(Scene):
                 str(path), 29, 7, 6, fps=12.0,
             )
             self._animated[name] = anim
-        # 2026-09-08 v1.5: load the 4 "charged state" long (150x50)
-        # sheets — one per charged weapon (5/6/7/8). Each sheet has
-        # 6 frames at 12 fps. Rendered as a 30x10 charge preview
-        # near the muzzle while fire is held, with alpha ramping in
-        # as charge_time grows. The long sheet name is derived from
-        # the WEAPON_ARCHETYPE table so the same sprite that's used
-        # in-flight (compact laser_NN) is also the charged preview
-        # at full size (laser_NN_long).
-        # 2026-09-08: pre-flight with 1x1 magenta fallback to make a
-        # missing sheet obvious in dev.
-        self._laser_long_sprites.clear()
-        for weapon in (0, 1, 2, 3):
-            # _load_sprites runs BEFORE self.player is constructed
-            # (see on_enter), so we pull the WEAPON_ARCHETYPE table
-            # from the bullet module (it's a module-level constant,
-            # not a class attribute). Mapping (from bullet.py):
-            #   0 (orange fire)   -> archetype 6 -> laser_07_long
-            #   1 (white piercing) -> archetype 7 -> laser_08_long
-            #   2 (magenta heart) -> archetype 8 -> laser_09_long
-            #   3 (cyan ice)      -> archetype 5 -> laser_06_long
-            archetype = WEAPON_ARCHETYPE[weapon] \
-                if 0 <= weapon < len(WEAPON_ARCHETYPE) else 0
-            sheet_name = f"laser_{archetype + 1:02d}_long"
-            path = self._sprite_path(sheet_name)
-            anim = AnimatedSprite(
-                str(path), 150, 50, 6, fps=12.0,
-            )
-            self._laser_long_sprites[weapon] = anim
-            # Register under the full sheet name in self._animated so
-            # the per-frame update tick (which iterates self._animated
-            # values) advances the animation in sync with everything
-            # else.
-            self._animated[sheet_name] = anim
+        # 2026-09-08 v1.6: the 4 long sheets (laser_06..laser_09
+        # _long_sheet.png) are kept on disk per the user's decision
+        # but are no longer loaded. The charge effect is now the
+        # procedural ShipChargeOrb at the muzzle (see
+        # fx/ship_charge_orb.py), not a sprite-sheet preview.
 
     def _update_beam(self, dt: float) -> None:
         """Manage the weapon-5 beam: spawn / despawn / update end /
         apply damage on tick.
 
-        The beam is alive when (player.weapon == 0 AND player.firing).
+        The beam is alive when (player.weapon == 0 AND player.charging).
+        2026-09-08 v1.6: B is the basic tier-1 fire key; SPACE is the
+        charge key that drives the beam for weapon 0.
         The start point follows the player's muzzle every frame; the
         end point is computed by scanning enemies in the +X direction
         and picking the closest one that's within MAX_LENGTH and
@@ -408,7 +376,7 @@ class GameplayScene(Scene):
         beam = self._beam
         should_be_alive = (
             self.player.weapon == 0
-            and self.player.firing
+            and self.player.charging
             and self.player.alive
             and not self.player.dying
         )
@@ -559,7 +527,12 @@ class GameplayScene(Scene):
         self._keys = pygame.key.get_pressed()
         # Inject FxLayer into player so it can emit its own trail
         self.player.fx = self.fx
-        self.player.firing = self._keys[pygame.K_SPACE]
+        # 2026-09-08 v1.6: split B (tap fire) from SPACE (charge).
+        # B drives the basic tier-1 bullet on cooldown. SPACE drives
+        # the tier-2 charged behavior (beam, Megaman bolt, boomerang,
+        # piercing stream).
+        self.player.firing = self._keys[pygame.K_b]
+        self.player.charging = self._keys[pygame.K_SPACE]
         # Advance the scene clock FIRST so any bullets spawned this
         # frame get a spawn_time that's already past `self._elapsed`
         # at the moment they're drawn.
@@ -568,9 +541,9 @@ class GameplayScene(Scene):
         # Number-key weapon switch. KEYDOWN events come from the
         # scene_manager; we walk the events once and pick the LAST
         # matching key (so if the user holds two, the latest wins).
-        # 2026-09-08 v1.5: also detect K_SPACE KEYDOWN/KEYUP edges
-        # to drive the new charge mechanic (the per-weapon fire
-        # behavior in Player.update reads these edge flags).
+        # 2026-09-08 v1.6: detect B (tap fire) and SPACE (charge)
+        # KEYDOWN/KEYUP edges to drive the two fire paths in
+        # Player.update.
         for ev in events:
             if ev.type == pygame.KEYDOWN and ev.key in self._WEAPON_KEYS:
                 new_weapon = self._WEAPON_KEYS.index(ev.key)
@@ -584,20 +557,26 @@ class GameplayScene(Scene):
                     self.fx.emit_impact(self.player.x + 4,
                                         self.player.y, count=6,
                                         color=(255, 220, 100))
+            elif ev.type == pygame.KEYDOWN and ev.key == pygame.K_b:
+                self.player.on_tap_pressed()
+            elif ev.type == pygame.KEYUP and ev.key == pygame.K_b:
+                self.player.on_tap_released()
             elif ev.type == pygame.KEYDOWN and ev.key == pygame.K_SPACE:
-                self.player.on_fire_pressed()
+                self.player.on_charge_pressed()
             elif ev.type == pygame.KEYUP and ev.key == pygame.K_SPACE:
-                self.player.on_fire_released()
+                self.player.on_charge_released()
         # Player — pool is fixed-size; do NOT filter it (player.update
         # spawns by finding a dead slot, and filtering would shrink
         # the pool until no dead slot exists, blocking new shots).
         self.player.update(dt, self._keys, self.player_bullets,
                            now=self._elapsed)
-        # 2026-09-08 v1.5: beam management for weapon 0 (orange fire
+        # 2026-09-08 v1.6: beam management for weapon 0 (orange fire
         # "lanzallamas"). The beam is alive while the player is
-        # holding fire on weapon 0. While alive, its start follows
-        # the player muzzle and its end is the nearest enemy in line
-        # of fire (or max range if no enemy is in range).
+        # holding SPACE (charging) on weapon 0. While alive, its
+        # start follows the player muzzle and its end is the nearest
+        # enemy in line of fire (or max range if no enemy is in
+        # range). B (tap fire) is the basic tier-1 shot and does
+        # NOT drive the beam.
         self._update_beam(dt)
         for b in self.player_bullets:
             if b.alive:
@@ -911,44 +890,25 @@ class GameplayScene(Scene):
                 size_scale = 0.5 + min(0.5, abs(self.player.vx) / 300.0)  # max 1.0 (~5px flame, ~1/3 ship)
                 self.player.flame.render(surface, self.player.x - 6, self.player.y,
                                           size_scale=size_scale)
-            # 2026-09-08 v1.5: charge aura. Drawn on top of the ship
-            # + flame so the player can see "I'm charging". Per-weapon
-            # color, growing radius, pulse at full charge. No-op for
-            # tap-only weapons (5/6/7/8 only) and when charge_time=0.
-            from stellar_horizon.fx.ship_charge_aura import draw as draw_charge_aura
-            draw_charge_aura(surface, self.player.x, self.player.y,
-                             self.player.weapon, self.player.charge_time,
-                             now=self._elapsed)
-            # 2026-09-08 v1.5: "charged state" long preview. A 30x10
-            # scaled version of the 150x50 long sheet (6 frames at
-            # 12 fps) extends FORWARD from the muzzle while fire is
-            # held, with alpha ramping in as charge_time grows. The
-            # tail of the sprite (left edge) sits at the muzzle and
-            # the head (right edge — sheets are right-aligned in
-            # postprocess) extends ~30px forward, showing the player
-            # what's about to fly out of the cannon. On release the
-            # bullet emerges from the head and the preview disappears.
-            #
-            # Alpha formula:
-            # - continuous weapons (0/3, CHARGE_TIME_S = 0.0): use
-            #   0.5s as the visual ramp time
-            # - discrete weapons (1/2, CHARGE_TIME_S = 1.2/1.5):
-            #   alpha reaches 1.0 at the charge threshold
-            # No-op for tap-only weapons (4) and charge_time=0.
-            long_anim = self._laser_long_sprites.get(self.player.weapon)
-            if long_anim is not None and self.player.charge_time > 0.0:
-                weapon = self.player.weapon
-                threshold = Player.CHARGE_TIME_S[weapon]
-                ramp_time = 0.5 if (threshold is None or threshold <= 0.0) else threshold
-                alpha01 = max(0.0, min(1.0, self.player.charge_time / ramp_time))
-                if alpha01 > 0.02:
-                    frame = long_anim.get_current_surface()  # 150x50
-                    scaled = pygame.transform.scale(frame, (30, 10))
-                    scaled.set_alpha(int(alpha01 * 255))
-                    muzzle_x = int(self.player.x + self.player.BULLET_OFFSET_X)
-                    # Tail at the muzzle, head extending forward.
-                    surface.blit(scaled, (muzzle_x, int(self.player.y - 5)))
-        # 2026-09-08 v1.5: beam (weapon 0 "lanzallamas"). Drawn on
+            # 2026-09-08 v1.6: charge orb at the muzzle. Procedural
+            # 3-layer sphere (weapon-color ring + cyan-shifted body
+            # + white hot core). Anchored at the muzzle, grows with
+            # charge_time, pulses at full charge. Replaces both the
+            # v1.5 ShipChargeAura (centered on the ship body) and
+            # the long-sheet preview (horizontal bar ahead of the
+            # muzzle). See fx/ship_charge_orb.py for the geometry.
+            # No-op when charge_time=0 or weapon is tap-only (4).
+            from stellar_horizon.fx.ship_charge_orb import draw as draw_charge_orb
+            draw_charge_orb(
+                surface,
+                self.player.x + self.player.BULLET_OFFSET_X,
+                self.player.y,
+                self.player.weapon,
+                self.player.charge_time,
+                self.player.charging,
+                now=self._elapsed,
+            )
+        # 2026-09-08 v1.6: beam (weapon 0 "lanzallamas"). Drawn on
         # top of the player so the body looks like it emerges from
         # the muzzle, but before the bullets so flying bolts are
         # still visible if they cross the beam path.

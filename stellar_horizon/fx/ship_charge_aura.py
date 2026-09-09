@@ -1,4 +1,23 @@
-"""Ship charge aura: Megaman-style visual on the player while fire is held.
+"""DEPRECATED 2026-09-08 v1.6: replaced by fx/ship_charge_orb.py.
+
+This module is kept on disk as historical reference and so existing
+test_ship_charge_aura.py can still run, but the gameplay scene no
+longer imports it. The new ShipChargeOrb anchors the visual at the
+muzzle (right side of the ship) instead of the body, and grows from
+a tiny yellow ring into a big pulsing 3-layer energy sphere.
+
+The v1.5 design (centered on the ship body) didn't read as "this is
+what's about to fly out of the cannon" -- it read as "the ship is
+glowing". The v1.6 redesign follows the user's reference video (Wan
++ Gemini, 2026-09-08) which shows the orb growing at the muzzle.
+
+If you want this module deleted, please ask the user explicitly
+(memory rule 2026-09-07: NEVER delete user files without per-instance
+ask). To remove, use the trash tool and confirm first.
+
+-- original docstring below --
+
+Ship charge aura: Megaman-style visual on the player while fire is held.
 
 This module is render-only — it has no game state, just a single
 `draw(surface, player, weapon, charge_time)` call that the gameplay

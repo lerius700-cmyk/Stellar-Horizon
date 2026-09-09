@@ -97,15 +97,15 @@ def test_gameplay_scene_loads_sprites_split():
     s._load_sprites()
     # Animated cache: 5 player + 20 enemy + 1 thrust + 6 attack + 6
     # death + 7 kind aliases (scout, cruiser, heavy, bomber, ufo,
-    # kamikaze, player — same AnimatedSprite instances as v1 variants
+    # kamikaze, player -- same AnimatedSprite instances as v1 variants
     # but separate dict keys) + 2 bullets + 5 lasers (laser_05..09)
-    # + 4 long sheets (laser_06..laser_09 _long) = 56.
+    # = 51. v1.5 added +4 long sheets (was 56). v1.6 dropped the long
+    # sheets (replaced by procedural ShipChargeOrb) -> 52.
     # (Boss states are in _boss_anims, NOT _animated. 2026-09-08.)
-    # 2026-09-08 v1.5 final: 5 weapons only. Laser sheets kept are
-    # 5..9 (basic archetypes 0..3 dropped). 4 long sheets for the
-    # charged weapons (0/1/2/3), keyed by archetype in
-    # self._animated under the laser_NN_long name.
-    assert len(s._animated) == 56
+    # 2026-09-08 v1.6: long sheets removed from loader; orb is now
+    # procedural. The 4 long PNGs stay on disk per user's decision
+    # but are NOT loaded.
+    assert len(s._animated) == 52
     # 5 player variants.
     for n in ("player_v1", "player_v2", "player_v3", "player_v4", "player_v5"):
         assert n in s._animated
