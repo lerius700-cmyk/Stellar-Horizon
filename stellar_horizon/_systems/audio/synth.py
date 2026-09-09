@@ -159,6 +159,31 @@ SFX_CATALOG: dict[str, _SfxSpec] = {
     "missile_lock":           _SfxSpec("missile_lock", Voice.SQUARE, 2000, 0, 0.005, 0.05, 0.0, 0.05, 0.10, "Homing lock-on", 0.4),
     "missile_fire":           _SfxSpec("missile_fire", Voice.SAW, 400, -200, 0.005, 0.10, 0.0, 0.10, 0.20, "Homing missile launch", 0.5),
     "screen_shake_thump":     _SfxSpec("screen_shake_thump", Voice.NOISE, 60, 0, 0.002, 0.08, 0.0, 0.10, 0.18, "Trauma shake thump", 0.5),
+    # BLOQUE 38 v1.7: ChargedDisc (weapon 1, white piercing) audio.
+    # The 4 events match the names exposed in
+    # stellar_horizon/audio/sfx.py as CHARGED_DISC_EVENTS. The
+    # engine prebakes them via _prebake_all() so the gameplay
+    # scene's sfx.play_event(...) dispatches a real Sound instead
+    # of the silent no-op from the v1.6 placeholder.
+    #
+    # Design notes:
+    # - TRIANGLE is used for the hum and the release because the
+    #   synth module doesn't have a pure SINE voice; triangle is
+    #   the smoothest available and reads as a sustained "energy"
+    #   tone (the synth's 8-bit aesthetic doesn't need true sine).
+    # - The hum is 1.0s long (matches the v1.7 charge window) so
+    #   when played with loops=-1 the seam is hit at most once per
+    #   charge -- negligible in practice.
+    # - The "4-8 kHz" of the hit is the spectral content of an
+    #   unfiltered white-noise burst at 44.1 kHz sample rate; the
+    #   synth has no bandpass filter, so a noise burst IS the
+    #   spec's intent. The existing "hit" SFX is identical except
+    #   for volume -- the dedicated name lets gameplay.py tune it
+    #   independently.
+    "charge_hum_white":       _SfxSpec("charge_hum_white", Voice.TRIANGLE, 200, 600, 0.10, 0.05, 0.80, 0.10, 1.00, "ChargedDisc charge hum 200->800Hz", 0.3),
+    "charged_release":        _SfxSpec("charged_release", Voice.TRIANGLE, 1200, -4000, 0.005, 0.05, 0.10, 0.10, 0.25, "ChargedDisc release sweep 1200->200Hz", 0.7),
+    "charged_hit":            _SfxSpec("charged_hit", Voice.NOISE, 0, 0, 0.002, 0.02, 0.0, 0.06, 0.08, "ChargedDisc first-hit noise burst", 0.5),
+    "charged_hit_secondary":  _SfxSpec("charged_hit_secondary", Voice.NOISE, 0, 0, 0.002, 0.01, 0.0, 0.03, 0.04, "ChargedDisc secondary-hit pop", 0.3),
     # BLOQUE_STELLAR_HORIZON_AUDIO: per-ship thruster loops.
     # Each ship (player + 6 enemy kinds) gets a unique continuous
     # loop that loops forever while alive. The ThrusterManager applies

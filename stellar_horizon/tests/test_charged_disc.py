@@ -329,6 +329,109 @@ def test_sfx_charged_disc_event_names_are_defined():
     })
 
 
+# ---------- Synth pass: SFX_CATALOG entries (v1.7 audio) ----------
+
+
+def test_synth_catalog_has_4_charged_disc_entries():
+    """v1.7 synth pass: the 4 placeholder event names are now
+    in the SFX_CATALOG so the engine prebakes them via
+    AudioEngine._prebake_all(). Before this commit, the names
+    existed in audio/sfx.py but the engine had no spec for them
+    (play_event was a silent no-op).
+    """
+    from stellar_horizon._systems.audio.synth import SFX_CATALOG
+    for name in sfx.CHARGED_DISC_EVENTS:
+        assert name in SFX_CATALOG, (
+            f"{name} missing from SFX_CATALOG -- engine can't "
+            f"prebake it, gameplay.py sfx.play_event() is no-op"
+        )
+
+
+def test_synth_charge_hum_white_spec_matches_design():
+    """Spec: 1.0s triangle 200Hz -> 800Hz, vol 0.3. We use TRIANGLE
+    because the synth module has no pure SINE voice (triangle is
+    the smoothest available).
+    Slide Hz/s = (800 - 200) / 1.0 = 600 Hz/s.
+    """
+    from stellar_horizon._systems.audio.synth import SFX_CATALOG, Voice
+    spec = SFX_CATALOG[sfx.CHARGE_HUM_WHITE]
+    assert spec.voice is Voice.TRIANGLE
+    assert spec.freq_hz == 200.0
+    # 600 Hz/s slide (200->800 over 1.0s)
+    assert spec.slide_hz_per_s == pytest.approx(600.0)
+    assert spec.duration_s == pytest.approx(1.0)
+    assert spec.volume == pytest.approx(0.3)
+
+
+def test_synth_charged_release_spec_matches_design():
+    """Spec: 0.25s sweep 1200Hz -> 200Hz, vol 0.7.
+    Slide Hz/s = (200 - 1200) / 0.25 = -4000 Hz/s.
+    """
+    from stellar_horizon._systems.audio.synth import SFX_CATALOG, Voice
+    spec = SFX_CATALOG[sfx.CHARGED_RELEASE]
+    assert spec.voice is Voice.TRIANGLE
+    assert spec.freq_hz == 1200.0
+    assert spec.slide_hz_per_s == pytest.approx(-4000.0)
+    assert spec.duration_s == pytest.approx(0.25)
+    assert spec.volume == pytest.approx(0.7)
+
+
+def test_synth_charged_hit_spec_matches_design():
+    """Spec: 0.08s white noise burst, vol 0.5. The "4-8 kHz"
+    spectral content is intrinsic to an unfiltered noise burst
+    at 44.1 kHz sample rate (the synth has no bandpass filter).
+    """
+    from stellar_horizon._systems.audio.synth import SFX_CATALOG, Voice
+    spec = SFX_CATALOG[sfx.CHARGED_HIT]
+    assert spec.voice is Voice.NOISE
+    assert spec.duration_s == pytest.approx(0.08)
+    assert spec.volume == pytest.approx(0.5)
+
+
+def test_synth_charged_hit_secondary_spec_matches_design():
+    """Spec: 0.04s pop, vol 0.3. Very short noise burst -- reads
+    as a "pop" rather than a full hit.
+    """
+    from stellar_horizon._systems.audio.synth import SFX_CATALOG, Voice
+    spec = SFX_CATALOG[sfx.CHARGED_HIT_SECONDARY]
+    assert spec.voice is Voice.NOISE
+    assert spec.duration_s == pytest.approx(0.04)
+    assert spec.volume == pytest.approx(0.3)
+
+
+def test_synth_charged_disc_events_render_to_non_silent_buffers():
+    """All 4 events render via render_sfx() to non-silent 16-bit
+    PCM buffers. This is the "the audio actually exists" check --
+    if the catalog spec has duration_s=0 or volume=0, the buffer
+    would be all zeros and the test would fail.
+    """
+    from stellar_horizon._systems.audio.synth import render_sfx
+    for name in sfx.CHARGED_DISC_EVENTS:
+        buf = render_sfx(name)
+        # Buffer must be non-empty
+        assert len(buf) > 100, f"{name}: buffer too small ({len(buf)})"
+        # Buffer must have audible content (not all zeros)
+        nonzero = sum(1 for s in buf if s != 0)
+        assert nonzero > 100, (
+            f"{name}: too few non-zero samples ({nonzero}/{len(buf)}) "
+            f"-- the spec is probably wrong (duration or volume = 0)"
+        )
+
+
+def test_synth_charged_disc_events_in_sfx_names():
+    """AudioEngine._prebake_all() iterates SFX_NAMES (computed
+    from SFX_CATALOG). If a name is in the catalog but not in
+    SFX_NAMES, the engine won't prebake it. This is a paranoia
+    check that the catalog insertion didn't break the tuple.
+    """
+    from stellar_horizon._systems.audio.synth import SFX_NAMES
+    for name in sfx.CHARGED_DISC_EVENTS:
+        assert name in SFX_NAMES, (
+            f"{name} in SFX_CATALOG but not in SFX_NAMES -- "
+            f"AudioEngine won't prebake it"
+        )
+
+
 # ---------- Player integration: spawn path ----------
 
 
