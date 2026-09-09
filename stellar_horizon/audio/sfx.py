@@ -22,6 +22,13 @@ scene and the synth pass can both reference them.
   CHARGED_RELEASE         -- 0.25s sine sweep 1200Hz -> 200Hz, vol 0.7
   CHARGED_HIT             -- 0.08s white noise 4-8kHz, vol 0.5
   CHARGED_HIT_SECONDARY   -- 0.04s pop, vol 0.3
+
+  2026-09-09 v1.7 re-implementation: added 2 more event names for
+  the power-up ring pickups (gold + silver rings). Same placeholder
+  pattern -- .wav files are pending the synth pass.
+
+  RING_PICKUP_GOLD        -- 0.12s chime, gold triad (C5+E5+G5), vol 0.55
+  RING_PICKUP_SILVER      -- 0.10s chime, silver triad (C5+Eb5+G5), vol 0.50
 """
 from __future__ import annotations
 
@@ -36,6 +43,12 @@ CHARGED_RELEASE: str = "charged_release"
 CHARGED_HIT: str = "charged_hit"
 CHARGED_HIT_SECONDARY: str = "charged_hit_secondary"
 
+# v1.7 re-implementation: power-up ring pickup chimes. The gameplay
+# scene calls sfx.play_event(RING_PICKUP_GOLD) / RING_PICKUP_SILVER
+# from _on_powerup_pickup(). The .wav generation is pending.
+RING_PICKUP_GOLD: str = "ring_pickup_gold"
+RING_PICKUP_SILVER: str = "ring_pickup_silver"
+
 # Set of all v1.7 event names -- convenience for "fire all charged
 # disc events" iteration (e.g., the synth pass that pre-bakes
 # the .wav files).
@@ -44,6 +57,12 @@ CHARGED_DISC_EVENTS: frozenset[str] = frozenset({
     CHARGED_RELEASE,
     CHARGED_HIT,
     CHARGED_HIT_SECONDARY,
+})
+
+# Set of all v1.7 re-implementation ring pickup events.
+RING_PICKUP_EVENTS: frozenset[str] = frozenset({
+    RING_PICKUP_GOLD,
+    RING_PICKUP_SILVER,
 })
 
 

@@ -111,6 +111,11 @@ class GameplayScene(Scene):
         # Power-up rings spawned by enemy kills and (rarely) by the
         # boss. Updated + drawn alongside the other entities.
         self.powerups: list[PowerUp] = []
+        # 2026-09-09 v1.7: floating pickup popups ("+1 LIFE", "+1 MAX").
+        # Each entry: dict with text, x, y, vy (upward speed), t, max_t,
+        # color. Created in _on_powerup_pickup, ticked in update(),
+        # drawn in the entity layer.
+        self._popups: list[dict] = []
         self.score: int = 0
         self._next: Scene | None = None
         self._keys = None
@@ -928,6 +933,13 @@ class GameplayScene(Scene):
             if p.update(dt, self.player, self._elapsed):
                 self._on_powerup_pickup(p)
         self.powerups = [p for p in self.powerups if p.alive]
+        # 2026-09-09 v1.7: tick + cull floating pickup popups.
+        for pop in self._popups:
+            pop["t"] += dt
+            pop["y"] += pop["vy"] * dt
+        self._popups = [
+            p for p in self._popups if p["t"] < p["max_t"]
+        ]
         # Boss ring drop check (silver, 50% on 20 hits in 7s). Only
         # triggers while the boss is alive in PHASE_1/PHASE_2.
         if (self.boss_active and self.boss is not None
@@ -1118,6 +1130,10 @@ class GameplayScene(Scene):
         # effect (sparkle) reads on top of any nearby bullet.
         for p in self.powerups:
             p.draw(surface, self._elapsed)
+        # 2026-09-09 v1.7: floating pickup popups ("+1 LIFE" etc).
+        # Drawn after rings (so they pop on top of the magneto effect)
+        # and before the FxLayer overlay.
+        self._draw_popups(surface)
         self.fx.draw(surface)
         self.hud.draw(surface)
 
@@ -1131,34 +1147,97 @@ class GameplayScene(Scene):
         # Boss intro stinger so the player knows the boss is here.
         sfx.play_event("boss_warning")
 
+    def _draw_popups(self, surface: pygame.Surface) -> None:
+        """2026-09-09 v1.7: render the floating pickup popups.
+
+        Each popup drifts upward, fades over its lifetime. Uses a
+        monospace small font; the text color matches the ring kind
+        (gold or silver). Drawn on top of the rings but below the
+        FxLayer overlay.
+        """
+        if not self._popups:
+            return
+        # Lazy font init -- pygame.font is already started by conftest
+        # and main.py.
+        if not hasattr(self, "_popup_font"):
+            self._popup_font = pygame.font.SysFont("monospace", 12, bold=True)
+        for pop in self._popups:
+            t = pop["t"] / pop["max_t"]
+            # Fade-out over the last 40% of the lifetime.
+            alpha = 255 if t < 0.6 else int(255 * (1.0 - (t - 0.6) / 0.4))
+            alpha = max(0, min(255, alpha))
+            r, g, b = pop["color"]
+            text_surf = self._popup_font.render(
+                pop["text"], True, (r, g, b),
+            )
+            text_surf.set_alpha(alpha)
+            x = int(pop["x"] - text_surf.get_width() // 2)
+            y = int(pop["y"] - text_surf.get_height() // 2)
+            surface.blit(text_surf, (x, y))
+
     def _spawn_powerup(self, x: float, y: float, kind: str) -> None:
-        """Add a new power-up ring to the live list."""
+        """Add a new power-up ring to the live list. v1.7: also emit
+        a 8-10 particle drop burst in the ring's color so the spawn
+        is visible on the battlefield."""
         p = PowerUp()
         p.spawn(x, y, kind, self._elapsed)
         self.powerups.append(p)
+        if self.fx is not None:
+            if kind == PowerUpKind.GOLD:
+                self.fx.emit_impact(x, y, count=10, color=(255, 220, 110))
+            else:
+                self.fx.emit_impact(x, y, count=8, color=(220, 230, 255))
 
     def _on_powerup_pickup(self, p: PowerUp) -> None:
         """Apply the picked-up ring's effect to the player and emit
-        the appropriate sparkle / SFX.
+        the appropriate sparkle / SFX / popup.
         """
         if p.kind == PowerUpKind.GOLD:
             stacked = self.player.collect_gold_ring()
             # Heal +2 (or +1 if already at max lives on the current
             # cap; the heal() method caps at max_lives).
             self.player.heal(2)
-            # Sparkle: gold burst.
-            self.fx.emit_impact(p.x, p.y, count=18, color=(255, 220, 110))
+            # Sparkle: gold burst at the ring's last position.
+            self.fx.emit_impact(p.x, p.y, count=20, color=(255, 220, 110))
             self.shake.add_trauma(0.08)
-            sfx.play_event("hit")  # fallback if no "ring" SFX exists
+            sfx.play_event("ring_pickup_gold")
+            # 2026-09-09 v1.7: floating popup text.
+            self._spawn_popup(
+                "+1 MAX" if stacked else "+2 LIFE",
+                self.player.x, self.player.y - 18,
+                color=(255, 220, 110),
+            )
             if stacked:
                 # Extra punch when the cap just grew.
                 self.fx.emit_impact(self.player.x, self.player.y,
-                                    count=24, color=(255, 240, 180))
+                                    count=28, color=(255, 240, 180))
                 self.shake.add_trauma(0.20)
         else:
             self.player.collect_silver_ring()
-            self.fx.emit_impact(p.x, p.y, count=12, color=(220, 230, 255))
-            sfx.play_event("hit")
+            self.fx.emit_impact(p.x, p.y, count=14, color=(220, 230, 255))
+            sfx.play_event("ring_pickup_silver")
+            self._spawn_popup(
+                "+1 LIFE",
+                self.player.x, self.player.y - 18,
+                color=(220, 230, 255),
+            )
+
+    def _spawn_popup(self, text: str, x: float, y: float,
+                     color: tuple[int, int, int],
+                     lifetime: float = 1.5,
+                     vy: float = -28.0) -> None:
+        """Add a floating text popup (e.g. '+1 LIFE') that drifts up
+        and fades out. Used for pickup feedback.
+        """
+        self._popups.append({
+            "text": text,
+            "x": x,
+            "y": y,
+            "vy": vy,
+            "t": 0.0,
+            "max_t": lifetime,
+            "color": color,
+        })
 
     # ------------------------------------------------------------------
     # Sprite blit helpers — each picks the right animated sprite from
