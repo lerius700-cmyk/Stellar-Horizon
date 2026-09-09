@@ -6,16 +6,37 @@
 
 ## Estado del proyecto
 
-- **Version:** v1.1.0 (tagged 2026-08-31).
-- **Status:** Stable, live on GitHub Releases. Path fix shipped.
-- **Test baseline:** 311 passed, 1 failed, 5 errors (out of 317 total).
-  Failures and errors are pre-existing, NOT introduced by recent work.
-  See "Known issues" below.
-- **Latest tag:** `v1.1.0` at commit `91def31`. The post-refactor
-  commits (path fix + visual polish + summary) and the SF+SM refactor
-  are ahead of the tag — they are in `main` but not yet in a release.
+- **Version:** v1.7.0 (tagged 2026-09-09).
+- **Status:** Stable, live on GitHub Releases. ChargedDisc + re-implemented rings shipped.
+- **Test baseline:** 503 passed, 0 failed (was 311 in v1.1.0).
+- **Latest tag:** `v1.7.0` at commit `60feb18` (release notes).
+  Gameplay work commits: `9e20833` (ChargedDisc) + `350c869`
+  (power-up rings re-implementation).
 
 ## Última sesión
+
+**2026-09-09 — v1.7.0: ChargedDisc (slot 1) + re-implemented power-up rings**
+
+- **ChargedDisc** (entities/charged_disc.py + fx/charged_disc_renderer.py + fx/shockwave.py): 40px radius, 1100 px/s, max 4 hits, 8x first / 3x secondary, fades over 0.4s after the last hit. CHARGE_TIME_S[1] 1.2s → 1.0s. New FxLayer primitives: `emit_shockwave()`, `add_screen_shake()` (capped at 6px), `add_flash()`. 21 new tests. Visual: `sprite_tests/captures/charged_disc_v17.png`.
+- **PowerUp re-implementation** (entities/powerup.py): 18px ring + 22px glow, drop rates 5%/10% → 18%/25%, drop VFX, idle bobbing + glow pulse, magnet hint, drop physics (random kick + gravity + drag), pickup popups. New gameplay.py system: `_draw_popups()` / `_spawn_popup()` for floating "+1 LIFE" / "+1 MAX" text. Dedicated sfx events `ring_pickup_gold` / `ring_pickup_silver` (placeholder .wav). 11 new tests. Visual: `sprite_tests/captures/powerup_rings_v17.png`.
+- **Released at:** https://github.com/lerius700-cmyk/Stellar-Horizon/releases/tag/v1.7.0
+- **Download:** `StellarHorizon-v1.7.0-win64.zip` (34.6 MB)
+- **6 sfx events pending** synth pass: 4 ChargedDisc + 2 ring pickups. Events dispatch as silent no-op until the .wav files are generated.
+- **Token rotation done:** `STELLAR_HORIZON_TOKEN` was leaked via `$env:VAR` (PowerShell prints bare variable expressions). User regenerated via `setx HKCU\Environment`. New safe pattern: `$env:STELLAR_HORIZON_TOKEN = $null` before running `tools/create_v1_6_0_release.py` so the script falls back to the registry-stored token.
+- **DEPRECATED on disk:** `fx/ship_charge_aura.py` (v1.5 charge aura) — kept per memory rule 2026-09-07 (no borrar sin pedir).
+
+---
+
+**Earlier in 2026-09-08/09 — v1.6.0: B = metralleta, SPACE = cargado, 5-weapon reduction**
+
+- Control scheme split: B (tap, tier-1 basic) vs SPACE (hold+release, tier-2 charged). Per weapon: orange fire B=bullets/SPACE=beam, white pierce B=bullets/SPACE=disc, magenta heart B=bullets/SPACE=boomerang, cyan ice B=bullets/SPACE=piercing stream, rainbow B=bullets/SPACE=no-op.
+- 10 weapons → 5 (removed the 5 "basic" archetypes; the 4 charged + rainbow remain).
+- NEW `fx/ship_charge_orb.py` (3-layer procedural sphere at muzzle; ring + body + white hot core; pulses at full charge). Replaces v1.5 ShipChargeAura + long-sheet preview.
+- Long sheets (laser_06..09 _long_sheet.png) STAY on disk per user decision but are NOT loaded.
+- Released at: https://github.com/lerius700-cmyk/Stellar-Horizon/releases/tag/v1.6.0
+- 487 tests passing at v1.6.0 release.
+
+---
 
 **2026-09-01 — SF+SM refactor + token guidance + .zip verification**
 
@@ -118,15 +139,15 @@ D:\AI\stellar-horizon\
 │   ├── assets/          ← backgrounds/, midi/, sprites/ — runtime assets
 │   ├── audio/           ← MidiPlayer, sfx event handler, thrusters
 │   ├── core/            ← Game, SceneManager, Scene base
-│   ├── entities/        ← Player, Enemy, Boss, Bullet, PowerUp
-│   ├── fx/              ← particles, engine_flames, screen_shake, dust, bullet_vfx
+│   ├── entities/        ← Player, Enemy, Boss, Bullet, PowerUp, Beam, ChargedDisc
+│   ├── fx/              ← particles, engine_flames, screen_shake, dust, bullet_vfx, ship_charge_orb, beam_renderer, charged_disc_renderer, shockwave, weapon_impact
 │   ├── scenes/          ← TitleScene, GameplayScene, GameOverScene
 │   ├── settings.py      ← package-level constants
 │   ├── tools/           ← refactor scripts (gitignored: _*.py)
 │   ├── ui/              ← Hud, AnimatedSprite, Background, MountainLayer
 │   ├── waves/           ← WaveManager, formations, JSON
 │   ├── _systems/        ← foundational library (movement, audio/synth, particle_engine, ...)
-│   └── tests/           ← pytest suite (26 files, 311 passing)
+│   └── tests/           ← pytest suite (32 files, 503 passing)
 └── docs/
     └── superpowers/
         ├── specs/
