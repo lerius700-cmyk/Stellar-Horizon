@@ -184,6 +184,17 @@ SFX_CATALOG: dict[str, _SfxSpec] = {
     "charged_release":        _SfxSpec("charged_release", Voice.TRIANGLE, 1200, -4000, 0.005, 0.05, 0.10, 0.10, 0.25, "ChargedDisc release sweep 1200->200Hz", 0.7),
     "charged_hit":            _SfxSpec("charged_hit", Voice.NOISE, 0, 0, 0.002, 0.02, 0.0, 0.06, 0.08, "ChargedDisc first-hit noise burst", 0.5),
     "charged_hit_secondary":  _SfxSpec("charged_hit_secondary", Voice.NOISE, 0, 0, 0.002, 0.01, 0.0, 0.03, 0.04, "ChargedDisc secondary-hit pop", 0.3),
+    # BLOQUE 39 v1.7.2: power-up ring pickup chimes. The 2 event
+    # names match RING_PICKUP_EVENTS in audio/sfx.py. Each spec
+    # targets the FUNDAMENTAL of the triad (C5=523.25 Hz); the
+    # triangle wave's soft 3rd harmonic approximates the bell/
+    # chime character of the full triad. Short attack + short
+    # release = "ting!" not "bwaaang".
+    # Gold = brighter, slightly longer, slightly louder (more
+    # reward weight since the gold ring is rarer).
+    # Silver = softer, shorter, quieter.
+    "ring_pickup_gold":       _SfxSpec("ring_pickup_gold", Voice.TRIANGLE, 523.25, 0, 0.002, 0.04, 0.0, 0.08, 0.12, "Ring pickup gold chime (C5 triad fundamental)", 0.55),
+    "ring_pickup_silver":     _SfxSpec("ring_pickup_silver", Voice.TRIANGLE, 523.25, 0, 0.002, 0.03, 0.0, 0.07, 0.10, "Ring pickup silver chime (C5 triad fundamental)", 0.50),
     # BLOQUE_STELLAR_HORIZON_AUDIO: per-ship thruster loops.
     # Each ship (player + 6 enemy kinds) gets a unique continuous
     # loop that loops forever while alive. The ThrusterManager applies

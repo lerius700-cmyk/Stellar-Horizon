@@ -166,6 +166,72 @@ def test_ring_pickup_sfx_events_present():
     assert "ring_pickup_silver" in sfx.RING_PICKUP_EVENTS
 
 
+# --- Synth pass: SFX_CATALOG entries (v1.7.2 audio) ---
+
+
+def test_synth_catalog_has_2_ring_pickup_entries():
+    """v1.7.2 synth pass: the 2 ring pickup placeholder event names
+    are now in the SFX_CATALOG so the engine prebakes them via
+    AudioEngine._prebake_all(). Before this commit, the names
+    existed in audio/sfx.py but the engine had no spec for them
+    (play_event was a silent no-op).
+    """
+    from stellar_horizon._systems.audio.synth import SFX_CATALOG
+    from stellar_horizon.audio import sfx
+    for name in sfx.RING_PICKUP_EVENTS:
+        assert name in SFX_CATALOG, (
+            f"{name} missing from SFX_CATALOG -- engine can't "
+            f"prebake it, gameplay.py sfx.play_event() is no-op"
+        )
+
+
+def test_ring_pickup_gold_spec_matches_design():
+    """The gold pickup spec is a short triangle chime at C5 (523.25
+    Hz) with attack 0.002s, decay 0.04s, release 0.08s, total
+    duration 0.12s, volume 0.55.
+    """
+    from stellar_horizon._systems.audio.synth import SFX_CATALOG, Voice
+    from stellar_horizon.audio import sfx
+    spec = SFX_CATALOG[sfx.RING_PICKUP_GOLD]
+    assert spec.voice is Voice.TRIANGLE
+    assert spec.freq_hz == pytest.approx(523.25)
+    assert spec.duration_s == pytest.approx(0.12)
+    assert spec.attack_s == pytest.approx(0.002)
+    assert spec.decay_s == pytest.approx(0.04)
+    assert spec.release_s == pytest.approx(0.08)
+    assert spec.volume == pytest.approx(0.55)
+
+
+def test_ring_pickup_silver_spec_matches_design():
+    """The silver pickup spec is the same shape as gold but with
+    shorter duration (0.10s) and quieter volume (0.50).
+    """
+    from stellar_horizon._systems.audio.synth import SFX_CATALOG, Voice
+    from stellar_horizon.audio import sfx
+    spec = SFX_CATALOG[sfx.RING_PICKUP_SILVER]
+    assert spec.voice is Voice.TRIANGLE
+    assert spec.freq_hz == pytest.approx(523.25)
+    assert spec.duration_s == pytest.approx(0.10)
+    assert spec.attack_s == pytest.approx(0.002)
+    assert spec.decay_s == pytest.approx(0.03)
+    assert spec.release_s == pytest.approx(0.07)
+    assert spec.volume == pytest.approx(0.50)
+
+
+def test_synth_ring_pickup_events_in_sfx_names():
+    """AudioEngine._prebake_all() iterates SFX_NAMES (computed
+    from SFX_CATALOG). If a name is in the catalog but not in
+    SFX_NAMES, the engine won't prebake it.
+    """
+    from stellar_horizon._systems.audio.synth import SFX_NAMES
+    from stellar_horizon.audio import sfx
+    for name in sfx.RING_PICKUP_EVENTS:
+        assert name in SFX_NAMES, (
+            f"{name} in SFX_CATALOG but not in SFX_NAMES -- "
+            f"AudioEngine won't prebake it"
+        )
+
+
 # --- Drop physics ---
 
 
