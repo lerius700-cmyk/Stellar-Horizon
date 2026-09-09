@@ -1,7 +1,7 @@
 """Beam entity: continuous line from player muzzle to impact point.
 
 2026-09-08 v1.5: replaces the "stream of fireballs" approximation for
-weapon 5 (orange fire) with a proper beam. The beam is a single
+weapon 0 (orange fire) with a proper beam. The beam is a single
 entity (not a pool — only one beam can be active at a time) with:
 
 - A start point (player muzzle: x + BULLET_OFFSET_X, y).
@@ -14,7 +14,7 @@ entity (not a pool — only one beam can be active at a time) with:
   fx/beam_renderer.py.
 
 The beam is `alive` while the fire key is held and the player is
-on weapon 5. Switching weapons or releasing the key despawns it.
+on weapon 0. Switching weapons or releasing the key despawns it.
 """
 from __future__ import annotations
 

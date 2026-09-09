@@ -6,10 +6,10 @@ scene invokes each frame after the player is drawn (so the aura sits
 ON TOP of the ship sprite).
 
 Per-weapon color table (matches the laser sheet palette):
-    5 orange fire    -> #FF8C00
-    6 white piercing -> #FFFFFF
-    7 magenta heart  -> #FF44AA
-    8 cyan ice       -> #88FFFF
+    0 orange fire    -> #FF8C00
+    1 white piercing -> #FFFFFF
+    2 magenta heart  -> #FF44AA
+    3 cyan ice       -> #88FFFF
 
 All other weapons: aura is not drawn (returns immediately).
 
@@ -18,10 +18,10 @@ Visual:
                 (caps at 32).
     Inner disc: weapon color at 50% alpha, radius 4 + charge_time * 4
                 (caps at 16).
-    At full charge (weapons 6, 7, 8): pulse alpha with sin(t * 8)
+    At full charge (weapons 1, 2, 3): pulse alpha with sin(t * 8)
                 for a "ready" feedback (weapons with a discrete
                 charge threshold).
-    For weapon 5 (continuous beam): once charge_time > 0, the aura
+    For weapon 0 (continuous beam): once charge_time > 0, the aura
                 stays at full size (no pulse — the beam itself is the
                 "ready" feedback).
 
@@ -35,10 +35,10 @@ import pygame
 
 # 2026-09-08 v1.5: per-weapon aura color (RGB).
 CHARGE_AURA_COLOR: tuple[int, int, int] = {
-    5: (255, 140, 0),    # orange (flamethrower)
-    6: (255, 255, 255),  # white (lightning)
-    7: (255, 68, 170),   # magenta (heart)
-    8: (136, 255, 255),  # cyan (ice)
+    0: (255, 140, 0),    # orange (flamethrower)
+    1: (255, 255, 255),  # white (lightning)
+    2: (255, 68, 170),   # magenta (heart)
+    3: (136, 255, 255),  # cyan (ice)
 }
 
 # Aura geometry constants.
@@ -52,9 +52,9 @@ ALPHA_OUTER = 76           # 30% of 255
 ALPHA_INNER = 128          # 50% of 255
 PULSE_SPEED = 8.0          # Hz for the full-charge pulse
 # Weapons that have a DISCRETE charge threshold (1.2s / 1.5s) and
-# therefore benefit from a "ready" pulse at full charge. Weapon 5
+# therefore benefit from a "ready" pulse at full charge. Weapon 0
 # is excluded because the beam itself signals "ready".
-DISCRETE_CHARGE_WEAPONS = frozenset({6, 7, 8})
+DISCRETE_CHARGE_WEAPONS = frozenset({1, 2, 3})
 
 
 def draw(surface: pygame.Surface, x: float, y: float, weapon: int,

@@ -18,32 +18,35 @@ class Player:
     BOUND_Y_MAX = 254
     START_X = 40.0
 
-    # Per-weapon tuning. `weapon` is an int 0..9 chosen by the
+    # Per-weapon tuning. `weapon` is an int 0..4 chosen by the
     # gameplay scene via set_weapon(); the same index is used to
     # pick a laser_NN sprite and a cooldown / muzzle velocity.
+    # 2026-09-08 v1.5 final: 5 weapons only. The original v1.4 10-
+    # weapon set was reduced — the 5 "basic" archetypes (yellow
+    # plasma, red pulse, blue ion, green acid, purple void) were
+    # removed because the 4 charged archetypes (orange fire, white
+    # piercing, magenta heart, cyan ice) read as the "real" arsenal,
+    # and the original rainbow streak was kept as the 5th slot as a
+    # simple tap-only fallback.
+    # Mapping (new slot -> archetype):
+    #   0 orange fire      (was old slot 5, archetype 6) — beam
+    #   1 white piercing   (was old slot 6, archetype 7) — Megaman bolt
+    #   2 magenta heart    (was old slot 7, archetype 8) — boomerang
+    #   3 cyan ice         (was old slot 8, archetype 5) — piercing stream
+    #   4 rainbow streak   (was old slot 9, archetype 4) — tap-only
     WEAPON_COOLDOWN_S = (
-        0.10,  # 0 yellow plasma
-        0.10,  # 1 red pulse
-        0.07,  # 2 blue ion (very fast)
-        0.18,  # 3 green acid (slow, heavy)
-        0.12,  # 4 purple void
-        0.14,  # 5 orange fireball
-        0.09,  # 6 white piercing (fast, long range)
-        0.11,  # 7 pink heart
-        0.13,  # 8 cyan ice
-        0.10,  # 9 rainbow streak
+        0.14,  # 0 orange fire (continuous beam, no bullet cooldown)
+        0.09,  # 1 white piercing (charged bolt on release)
+        0.11,  # 2 magenta heart (charged boomerang on release)
+        0.13,  # 3 cyan ice (piercing crystals every 1.5s)
+        0.10,  # 4 rainbow streak (tap-only)
     )
     WEAPON_BULLET_SPEED = (
-        480.0,
-        460.0,
-        700.0,
-        380.0,
-        440.0,
-        400.0,
-        800.0,
-        460.0,
-        420.0,
-        600.0,
+        400.0,  # 0 (unused: weapon 0 fires a beam, not bullets)
+        800.0,  # 1 white piercing — very fast
+        460.0,  # 2 magenta heart
+        420.0,  # 3 cyan ice
+        600.0,  # 4 rainbow streak
     )
 
     # Max-lives constants. `MAX_LIVES` is the starting cap (3).
@@ -55,28 +58,24 @@ class Player:
     GOLD_RINGS_PER_STACK = 3
 
     # 2026-09-08 v1.5: charge mechanic. Per-weapon charge time in
-    # seconds. None = no charge behavior (tap-only). Weapons 5/8 use
+    # seconds. None = no charge behavior (tap-only). Weapons 0/3 use
     # 0.0 to mean "continuous (charge time doesn't gate the behavior)".
-    # 2026-09-08: weapons 6/7 use 1.2s/1.5s to fully charge before the
+    # Weapons 1/2 use 1.2s/1.5s to fully charge before the
     # release-time charged shot spawns.
     CHARGE_TIME_S: tuple[float | None, ...] = (
-        None,  # 0 yellow plasma — tap-only
-        None,  # 1 red pulse — tap-only
-        None,  # 2 blue ion — tap-only
-        None,  # 3 green acid — tap-only
-        None,  # 4 purple void — tap-only
-        0.0,   # 5 orange fireball — continuous beam (no threshold)
-        1.2,   # 6 white piercing — Megaman charged shot at full charge
-        1.5,   # 7 magenta heart — boomerang at full charge
-        0.0,   # 8 cyan ice — continuous piercing stream
-        None,  # 9 rainbow streak — tap-only
+        0.0,   # 0 orange fire      — continuous beam
+        1.2,   # 1 white piercing   — Megaman charged shot at full charge
+        1.5,   # 2 magenta heart    — boomerang at full charge
+        0.0,   # 3 cyan ice         — continuous piercing stream
+        None,  # 4 rainbow streak   — tap-only
     )
-    # 2026-09-08 v1.5: per-weapon stream spawn interval (for weapon 8).
+    # 2026-09-08 v1.5: per-weapon stream spawn interval (for weapon 3).
     PIERCING_SPAWN_INTERVAL_S: tuple[float, ...] = (
-        0.0, 0.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, 0.0,
-        1.5,  # 8 cyan ice — every 1.5s while held
-        0.0,
+        0.0,  # 0 (unused: beam, not stream)
+        0.0,  # 1
+        0.0,  # 2
+        1.5,  # 3 cyan ice — every 1.5s while held
+        0.0,  # 4
     )
 
     __slots__ = (
@@ -237,19 +236,19 @@ class Player:
             self.charge_complete = False
             self._piercing_spawn_timer = 0.0
         # 2026-09-08 v1.5: per-weapon fire dispatch.
-        #   - Weapons 0-4, 9: tap-only (existing behavior).
-        #   - Weapon 5 (orange fire): continuous beam while held.
-        #   - Weapon 6 (white piercing): tap = bolt, release-after-full-charge = megaman bolt.
-        #   - Weapon 7 (magenta heart): tap = heart, release-after-full-charge = boomerang.
-        #   - Weapon 8 (cyan ice): while held, every 1.5s spawn 1 piercing crystal.
-        # 2026-09-08 v1.5: weapon 8 (cyan ice) piercing-stream timer.
+        #   - Weapon 0 (orange fire): continuous beam while held.
+        #   - Weapon 1 (white piercing): tap = bolt, release-after-full-charge = megaman bolt.
+        #   - Weapon 2 (magenta heart): tap = heart, release-after-full-charge = boomerang.
+        #   - Weapon 3 (cyan ice): while held, every 1.5s spawn 1 piercing crystal.
+        #   - Weapon 4 (rainbow streak): tap-only (existing behavior).
+        # 2026-09-08 v1.5: weapon 3 (cyan ice) piercing-stream timer.
         # This runs every frame the fire key is held, regardless of
         # whether the bullet pool has an open slot — the timer should
         # always advance so the next available slot spawns on time.
         # The bullet spawned has `piercing=True` so the collision
         # handler keeps it alive through enemy hits (until the
         # natural off-screen check kills it).
-        if self.firing and self.weapon == 8:
+        if self.firing and self.weapon == 3:
             spawn_interval = self.PIERCING_SPAWN_INTERVAL_S[self.weapon]
             if spawn_interval > 0.0:
                 self._piercing_spawn_timer += dt
@@ -258,13 +257,13 @@ class Player:
                         self._spawn_bullet(bullets_pool, damage=2, piercing=True)
                         self._piercing_spawn_timer = 0.0
         if self.firing and self.shoot_cooldown <= 0.0 and bullets_pool:
-            if self.weapon == 5:
-                # 2026-09-08 v1.5: weapon 5 is the BEAM, not a stream of
+            if self.weapon == 0:
+                # 2026-09-08 v1.5: weapon 0 is the BEAM, not a stream of
                 # bullets. The GameplayScene spawns and updates the
                 # Beam entity while the player is holding fire on this
                 # weapon. No bullet spawn here.
                 pass
-            elif self.weapon == 8:
+            elif self.weapon == 3:
                 # Piercing stream spawn was already handled above (the
                 # timer advances outside the bullets_pool check, but
                 # the actual spawn needs an open slot). Nothing to do
@@ -278,24 +277,24 @@ class Player:
                 # changes the cadence.
                 self.shoot_cooldown = self.WEAPON_COOLDOWN_S[self.weapon]
         # 2026-09-08 v1.5: charged-shot dispatch on release. For
-        # weapons 6 (white piercing) and 7 (magenta heart), holding
+        # weapons 1 (white piercing) and 2 (magenta heart), holding
         # the fire key past the charge threshold enables a release-
         # triggered "charged shot" — a single big bullet with extra
         # damage and/or special behavior (Megaman bolt, boomerang).
         # `released_this_frame` is set by the scene on KEYUP.
-        if released_this_frame and self.weapon in (6, 7) and bullets_pool:
+        if released_this_frame and self.weapon in (1, 2) and bullets_pool:
             threshold = self.CHARGE_TIME_S[self.weapon] if self.weapon < len(self.CHARGE_TIME_S) else None
             # Only fire the charged shot if the player actually
             # charged (otherwise a quick tap just fires the normal
             # shot via the cooldown path above, and the release here
             # is a no-op).
             if threshold is not None and threshold > 0.0 and self.charge_complete:
-                if self.weapon == 6:
+                if self.weapon == 1:
                     # Megaman charged bolt: 3x damage, normal size.
                     # The "big shot" reads via the brighter VFX
-                    # (WEAPON_VFX_PARAMS already tuned for weapon 6).
+                    # (WEAPON_VFX_PARAMS already tuned for weapon 1).
                     self._spawn_bullet(bullets_pool, damage=3)
-                elif self.weapon == 7:
+                elif self.weapon == 2:
                     # Boomerang heart: flies out, then comes back
                     # after 0.6s. Does 2x damage on the way out
                     # AND 2x on the return.

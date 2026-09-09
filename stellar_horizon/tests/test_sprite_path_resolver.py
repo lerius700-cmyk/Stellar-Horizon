@@ -47,8 +47,11 @@ def test_resolves_enemy_with_kind_subfolder(scene):
 
 
 def test_resolves_laser_name(scene):
-    # 2026-09-08 v1.5: 9 laser sheets (laser_01..laser_09), not just 5.
-    for i in range(1, 10):
+    # 2026-09-08 v1.5 final: 5 laser sheets (laser_05..laser_09).
+    # The basic archetypes 0..3 (laser_01..laser_04) were dropped
+    # from the loader but the path resolver still maps them, so the
+    # test only checks the active set.
+    for i in range(5, 10):
         p = scene._sprite_path(f"laser_{i:02d}")
         assert p == scene.assets_dir / "sprites" / "bullets" / f"laser_{i:02d}_sheet.png"
 

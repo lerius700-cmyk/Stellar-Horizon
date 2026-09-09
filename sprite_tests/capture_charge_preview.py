@@ -43,9 +43,9 @@ def main() -> None:
         composite = pygame.Surface((cell_w * 4, cell_h * 2),
                                    pygame.SRCALPHA)
         # Per-weapon info.
-        weapons = (5, 6, 7, 8)
+        weapons = (0, 1, 2, 3)
         # Per-weapon full-charge time (matches the render-time formula).
-        full_charge = {5: 0.5, 6: 1.2, 7: 1.5, 8: 0.5}
+        full_charge = {0: 0.5, 1: 1.2, 2: 1.5, 3: 0.5}
 
         for col, weapon in enumerate(weapons):
             # ---- Top row: charge_time=0 (no preview) ---------------

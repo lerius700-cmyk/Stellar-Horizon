@@ -98,14 +98,14 @@ def test_gameplay_scene_loads_sprites_split():
     # Animated cache: 5 player + 20 enemy + 1 thrust + 6 attack + 6
     # death + 7 kind aliases (scout, cruiser, heavy, bomber, ufo,
     # kamikaze, player — same AnimatedSprite instances as v1 variants
-    # but separate dict keys) + 2 bullets + 9 lasers + 4 long sheets
-    # (laser_06..laser_09 _long) = 60.
+    # but separate dict keys) + 2 bullets + 5 lasers (laser_05..09)
+    # + 4 long sheets (laser_06..laser_09 _long) = 56.
     # (Boss states are in _boss_anims, NOT _animated. 2026-09-08.)
-    # 2026-09-08 v1.5: 5->9 laser sheets (cyan/orange/white/magenta).
-    # 2026-09-08 v1.5: +4 long sheets for the charged weapons
-    # (5/6/7/8), keyed by archetype in self._animated under the
-    # laser_NN_long name.
-    assert len(s._animated) == 60
+    # 2026-09-08 v1.5 final: 5 weapons only. Laser sheets kept are
+    # 5..9 (basic archetypes 0..3 dropped). 4 long sheets for the
+    # charged weapons (0/1/2/3), keyed by archetype in
+    # self._animated under the laser_NN_long name.
+    assert len(s._animated) == 56
     # 5 player variants.
     for n in ("player_v1", "player_v2", "player_v3", "player_v4", "player_v5"):
         assert n in s._animated
@@ -134,19 +134,21 @@ def test_gameplay_scene_loads_sprites_split():
     # The 7 kind-name aliases ARE present.
     for n in ("scout", "cruiser", "heavy", "bomber", "ufo", "kamikaze", "player"):
         assert n in s._animated
-    # Lasers ARE in the animated cache (2026-09-06 polish v2):
-    # 5 sheets (laser_01..laser_05), 6 frames each at 12 fps, 29x7.
-    # The single-frame first-frame is also kept in _laser_sprites
-    # for the HUD display + halo centering.
-    # 2026-09-08 v1.5: expanded to 9 sheets (laser_01..laser_09).
-    for n in (f"laser_{i:02d}" for i in range(1, 10)):
+    # Lasers ARE in the animated cache: 5 sheets (laser_05..laser_09),
+    # 6 frames each at 12 fps, 29x7. The single-frame first-frame
+    # is also kept in _laser_sprites for the HUD display + halo
+    # centering.
+    # 2026-09-08 v1.5 final: dropped basic archetypes 0..3 (laser_01..04).
+    for n in (f"laser_{i:02d}" for i in range(5, 10)):
         assert n in s._animated
-    # laser_10 doesn't exist (only 9 archetypes).
+    # laser_01..04 and laser_10+ don't exist (basic 4 archetypes dropped).
+    for n in (f"laser_{i:02d}" for i in range(1, 5)):
+        assert n not in s._animated
     for n in (f"laser_{i:02d}" for i in range(10, 11)):
         assert n not in s._animated
-    # Single-frame laser cache: 9 sprites (one per weapon archetype).
-    assert len(s._laser_sprites) == 9
-    for n in (f"laser_{i:02d}" for i in range(1, 10)):
+    # Single-frame laser cache: 5 sprites (one per weapon archetype).
+    assert len(s._laser_sprites) == 5
+    for n in (f"laser_{i:02d}" for i in range(5, 10)):
         assert n in s._laser_sprites
         surf = s._laser_sprites[n]
         # Each sprite is a real Surface (not the magenta 1x1 fallback).
@@ -188,7 +190,7 @@ def test_laser_sprites_have_per_weapon_sizes():
                       Path("stellar_horizon/waves/waves_act1.json"),
                       Path("stellar_horizon/assets"))
     s._load_sprites()
-    for i in range(1, 6):
+    for i in range(5, 10):
         name = f"laser_{i:02d}"
         surf = s._laser_sprites[name]
         assert surf.get_width() == 29, (
@@ -293,6 +295,9 @@ def test_spawned_bullet_has_consistent_spawn_time():
     # manual firing flag).
     s.player.firing = True
     s.player.shoot_cooldown = 0.0
+    # 2026-09-08 v1.5 final: weapon 0 is the BEAM (no bullets).
+    # Use weapon 4 (rainbow streak) which spawns tap-only bullets.
+    s.player.set_weapon(4)
     s.player.update(1 / 120, {pygame.K_SPACE: True},
                     s.player_bullets, now=s._elapsed)
     alive = [b for b in s.player_bullets if b.alive]
@@ -300,4 +305,4 @@ def test_spawned_bullet_has_consistent_spawn_time():
     # The bullet was spawned with now=s._elapsed, so its
     # spawn_time should match exactly.
     assert alive[0].spawn_time == s._elapsed
-    assert alive[0].weapon == 0
+    assert alive[0].weapon == 4

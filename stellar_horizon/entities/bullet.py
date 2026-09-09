@@ -6,24 +6,21 @@ import math
 import pygame
 
 
-# 2026-09-06 visual polish v2: weapon id (0..9) -> laser archetype
-# (0..4). All 10 weapons map to one of 5 sprite sheets. Multiple
-# weapons can share an archetype (e.g., acid/heart/ice all share
-# the same purple-organic archetype with different VFX).
-# 2026-09-08 v1.5: expanded to 9 archetypes (0..8). Weapons 5/6/7/8
-# now each get their own distinct sheet. Weapon 9 (rainbow streak)
-# keeps its alias to laser_05 (archetype 4).
+# 2026-09-06 visual polish v2: weapon id -> laser archetype.
+# 2026-09-08 v1.5 final: 5 weapons only, mapping to archetypes 4/5/6/7/8.
+# The "basic 5" (yellow/red/blue/green/purple void) and their
+# archetypes 0..3 were removed. Mapping:
+#   0 orange fire      -> archetype 6 (laser_07)
+#   1 white piercing   -> archetype 7 (laser_08)
+#   2 magenta heart    -> archetype 8 (laser_09)
+#   3 cyan ice         -> archetype 5 (laser_06)
+#   4 rainbow streak   -> archetype 4 (laser_05) — alias from v1.4
 WEAPON_ARCHETYPE: tuple[int, ...] = (
-    0,  # 0 yellow plasma    -> laser_01
-    1,  # 1 red pulse        -> laser_02
-    2,  # 2 blue ion         -> laser_03
-    3,  # 3 green acid       -> laser_04
-    4,  # 4 purple void      -> laser_05
-    6,  # 5 orange fireball  -> laser_07 (orange flame)
-    7,  # 6 white piercing   -> laser_08 (white lightning)
-    8,  # 7 pink heart       -> laser_09 (magenta heart)
-    5,  # 8 cyan ice         -> laser_06 (cyan ice)
-    4,  # 9 rainbow streak   -> laser_05 (alias, unchanged)
+    6,  # 0 orange fire      -> laser_07 (orange flame)
+    7,  # 1 white piercing   -> laser_08 (white lightning)
+    8,  # 2 magenta heart    -> laser_09 (magenta heart)
+    5,  # 3 cyan ice         -> laser_06 (cyan ice)
+    4,  # 4 rainbow streak   -> laser_05 (alias)
 )
 
 
@@ -34,7 +31,7 @@ class PlayerBullet:
 
     # `spawn_time` is the scene time at which this bullet was fired —
     # the code-driven VFX (fx/bullet_vfx.py) reads it to compute
-    # alpha/scale/halo phase. `weapon` is which of the 10 weapons
+    # alpha/scale/halo phase. `weapon` is which of the 5 weapons
     # fired this bullet so the VFX knows which animation to apply.
     # `frame` and `frame_time` drive sprite-sheet animation (4-frame loop
     # at 8 FPS). Falls back to no sheet animation if the sprite is single-frame.

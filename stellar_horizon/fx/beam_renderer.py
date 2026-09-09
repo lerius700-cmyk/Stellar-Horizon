@@ -1,6 +1,6 @@
 """Procedural beam body renderer.
 
-2026-09-08 v1.5: draws the beam (weapon 5 = orange fire beam)
+2026-09-08 v1.5: draws the beam (weapon 0 = orange fire beam)
 as a thick line with variable width + sinusoidal ondulations,
 matching the Wan's video reference (flamethrower hitting a wall).
 

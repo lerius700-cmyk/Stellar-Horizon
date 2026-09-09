@@ -93,7 +93,7 @@ class GameplayScene(Scene):
         self._thrust_timer: float = 0.0
         self.player_bullets: list[PlayerBullet] = [PlayerBullet() for _ in range(PLAYER_BULLET_POOL)]
         self.enemy_bullets: list[EnemyBullet] = [EnemyBullet() for _ in range(ENEMY_BULLET_POOL)]
-        # 2026-09-08 v1.5: continuous beam entity for weapon 5 (orange
+        # 2026-09-08 v1.5: continuous beam entity for weapon 0 (orange
         # fire "lanzallamas"). Only one beam at a time, not a pool.
         from stellar_horizon.entities.beam import Beam
         self._beam: Beam = Beam()
@@ -329,12 +329,16 @@ class GameplayScene(Scene):
         # the bullet render can pull `sheet._frames[b.frame_index]`
         # for the 6-frame animation cycle.
         self._laser_sprites.clear()
-        # 2026-09-08 v1.5: load 9 laser archetypes (laser_01..laser_09).
-        # The original v1.3.0/v1.4.0 only loaded 5 (laser_01..laser_05);
-        # v1.5 adds 4 new archetypes for weapons 5, 6, 7, 8
-        # (cyan ice, orange flame, white lightning, magenta heart).
-        # weapon 9 (rainbow streak) still aliases to laser_05.
-        for i in range(1, 10):
+        # 2026-09-08 v1.5 final: load 5 laser archetypes
+        # (laser_05..laser_09) — the basic 4 archetypes 0..3 (yellow
+        # plasma / red pulse / blue ion / green acid) were dropped.
+        # 2026-09-08 v1.5 archetype map:
+        #   archetype 4 (laser_05) -> weapon 4 (rainbow streak)
+        #   archetype 5 (laser_06) -> weapon 3 (cyan ice)
+        #   archetype 6 (laser_07) -> weapon 0 (orange fire)
+        #   archetype 7 (laser_08) -> weapon 1 (white piercing)
+        #   archetype 8 (laser_09) -> weapon 2 (magenta heart)
+        for i in (5, 6, 7, 8, 9):
             name = f"laser_{i:02d}"
             path = self._sprite_path(name)
             try:
@@ -367,15 +371,15 @@ class GameplayScene(Scene):
         # 2026-09-08: pre-flight with 1x1 magenta fallback to make a
         # missing sheet obvious in dev.
         self._laser_long_sprites.clear()
-        for weapon in (5, 6, 7, 8):
+        for weapon in (0, 1, 2, 3):
             # _load_sprites runs BEFORE self.player is constructed
             # (see on_enter), so we pull the WEAPON_ARCHETYPE table
             # from the bullet module (it's a module-level constant,
             # not a class attribute). Mapping (from bullet.py):
-            #   5 (orange fireball)  -> archetype 6 -> laser_07_long
-            #   6 (white piercing)   -> archetype 7 -> laser_08_long
-            #   7 (pink heart)       -> archetype 8 -> laser_09_long
-            #   8 (cyan ice)         -> archetype 5 -> laser_06_long
+            #   0 (orange fire)   -> archetype 6 -> laser_07_long
+            #   1 (white piercing) -> archetype 7 -> laser_08_long
+            #   2 (magenta heart) -> archetype 8 -> laser_09_long
+            #   3 (cyan ice)      -> archetype 5 -> laser_06_long
             archetype = WEAPON_ARCHETYPE[weapon] \
                 if 0 <= weapon < len(WEAPON_ARCHETYPE) else 0
             sheet_name = f"laser_{archetype + 1:02d}_long"
@@ -394,7 +398,7 @@ class GameplayScene(Scene):
         """Manage the weapon-5 beam: spawn / despawn / update end /
         apply damage on tick.
 
-        The beam is alive when (player.weapon == 5 AND player.firing).
+        The beam is alive when (player.weapon == 0 AND player.firing).
         The start point follows the player's muzzle every frame; the
         end point is computed by scanning enemies in the +X direction
         and picking the closest one that's within MAX_LENGTH and
@@ -403,7 +407,7 @@ class GameplayScene(Scene):
         """
         beam = self._beam
         should_be_alive = (
-            self.player.weapon == 5
+            self.player.weapon == 0
             and self.player.firing
             and self.player.alive
             and not self.player.dying
@@ -532,20 +536,17 @@ class GameplayScene(Scene):
         # usage is wrong.
         self.thrusters.clear_player()
 
-    # Number keys 1-9 and 0 in that order map to weapon indices 0..9
-    # so the player can cycle through all 10 laser variants without
-    # leaving the home row. The order matches the WEAPON_COOLDOWN_S
-    # table in the Player class (1 = yellow plasma, 0 = rainbow).
+    # Number keys 1-5 map to weapon indices 0..4 so the player can
+    # cycle through all 5 laser variants without leaving the home
+    # row. The order matches the WEAPON_COOLDOWN_S table in the
+    # Player class.
+    # 2026-09-08 v1.5 final: 5 weapons only. The original 10-slot
+    # set was reduced; the 4 charged weapons (orange fire / white
+    # pierce / pink heart / cyan ice) + rainbow streak remain.
     _WEAPON_KEYS = (
         pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5,
-        pygame.K_6, pygame.K_7, pygame.K_8, pygame.K_9, pygame.K_0,
     )
     _WEAPON_NAMES = (
-        "YELLOW PLASMA",
-        "RED PULSE",
-        "BLUE ION",
-        "GREEN ACID",
-        "PURPLE VOID",
         "ORANGE FIRE",
         "WHITE PIERCE",
         "PINK HEART",
@@ -592,9 +593,9 @@ class GameplayScene(Scene):
         # the pool until no dead slot exists, blocking new shots).
         self.player.update(dt, self._keys, self.player_bullets,
                            now=self._elapsed)
-        # 2026-09-08 v1.5: beam management for weapon 5 (orange fire
+        # 2026-09-08 v1.5: beam management for weapon 0 (orange fire
         # "lanzallamas"). The beam is alive while the player is
-        # holding fire on weapon 5. While alive, its start follows
+        # holding fire on weapon 0. While alive, its start follows
         # the player muzzle and its end is the nearest enemy in line
         # of fire (or max range if no enemy is in range).
         self._update_beam(dt)
@@ -929,11 +930,11 @@ class GameplayScene(Scene):
             # bullet emerges from the head and the preview disappears.
             #
             # Alpha formula:
-            # - continuous weapons (5/8, CHARGE_TIME_S = 0.0): use
+            # - continuous weapons (0/3, CHARGE_TIME_S = 0.0): use
             #   0.5s as the visual ramp time
-            # - discrete weapons (6/7, CHARGE_TIME_S = 1.2/1.5):
+            # - discrete weapons (1/2, CHARGE_TIME_S = 1.2/1.5):
             #   alpha reaches 1.0 at the charge threshold
-            # No-op for tap-only weapons (0-4, 9) and charge_time=0.
+            # No-op for tap-only weapons (4) and charge_time=0.
             long_anim = self._laser_long_sprites.get(self.player.weapon)
             if long_anim is not None and self.player.charge_time > 0.0:
                 weapon = self.player.weapon
@@ -947,7 +948,7 @@ class GameplayScene(Scene):
                     muzzle_x = int(self.player.x + self.player.BULLET_OFFSET_X)
                     # Tail at the muzzle, head extending forward.
                     surface.blit(scaled, (muzzle_x, int(self.player.y - 5)))
-        # 2026-09-08 v1.5: beam (weapon 5 "lanzallamas"). Drawn on
+        # 2026-09-08 v1.5: beam (weapon 0 "lanzallamas"). Drawn on
         # top of the player so the body looks like it emerges from
         # the muzzle, but before the bullets so flying bolts are
         # still visible if they cross the beam path.
@@ -1321,12 +1322,12 @@ class GameplayScene(Scene):
 
     def _draw_player_bullet_sprite(self, surface, b, ox, oy) -> None:
         # 2026-09-06 visual polish v2: pull the weapon's archetype
-        # (0..4) and look up the matching 6-frame sheet in
-        # self._animated. archetype 0 -> laser_01, ..., archetype 4
-        # -> laser_05. Fall back to the legacy single-frame
-        # _laser_sprites[laser_NN] if the sheet is missing (e.g.
-        # the asset failed to load) so the bullet still renders.
-        archetype = getattr(b, "weapon_archetype", 0)
+        # and look up the matching 6-frame sheet in self._animated.
+        # 2026-09-08 v1.5 final: archetypes 4..8 (laser_05..laser_09).
+        # Fall back to the legacy single-frame _laser_sprites[laser_NN]
+        # if the sheet is missing (e.g. the asset failed to load) so
+        # the bullet still renders.
+        archetype = getattr(b, "weapon_archetype", 4)
         sheet_name = f"laser_{archetype + 1:02d}"
         sheet = self._animated.get(sheet_name)
         sub = None
@@ -1341,7 +1342,7 @@ class GameplayScene(Scene):
         if sub is None:
             sub = self._laser_sprites.get(sheet_name)
         if sub is None:
-            sub = self._laser_sprites.get("laser_01")
+            sub = self._laser_sprites.get("laser_05")
         if sub is None:
             pygame.draw.rect(surface, (255, 240, 100),
                              (int(b.x - 6 + ox), int(b.y - 2 + oy), 12, 4))

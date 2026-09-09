@@ -1,10 +1,10 @@
 """Tests for the weapon switching system + redesigned HUD.
 
 Verifies:
-- Player has 10 distinct weapon cooldowns and bullet speeds.
+- Player has 5 distinct weapon cooldowns and bullet speeds.
 - Player.set_weapon switches the index (no-op on same weapon or
   out-of-range).
-- GameplayScene wires K_1..K_9 and K_0 to the 10 weapon indices.
+- GameplayScene wires K_1..K_5 to the 5 weapon indices.
 - HUD.set_weapon_catalog / set_current_weapon track the active
   weapon and don't crash when the weapon cache is missing.
 """
@@ -29,9 +29,10 @@ from stellar_horizon.ui.hud import Hud
 
 # --- Player weapon state -----------------------------------------------
 
-def test_player_has_ten_weapon_cooldowns():
-    assert len(Player.WEAPON_COOLDOWN_S) == 10
-    assert len(Player.WEAPON_BULLET_SPEED) == 10
+def test_player_has_five_weapon_cooldowns():
+    # 2026-09-08 v1.5 final: 5 weapons only.
+    assert len(Player.WEAPON_COOLDOWN_S) == 5
+    assert len(Player.WEAPON_BULLET_SPEED) == 5
     # All cooldowns are positive.
     for c in Player.WEAPON_COOLDOWN_S:
         assert c > 0.0
@@ -43,13 +44,13 @@ def test_player_has_ten_weapon_cooldowns():
 def test_player_set_weapon_switches_index():
     p = Player(pygame.Rect(0, 0, 480, 270))
     assert p.weapon == 0
-    p.set_weapon(5)
-    assert p.weapon == 5
-    p.set_weapon(9)
-    assert p.weapon == 9
+    p.set_weapon(2)
+    assert p.weapon == 2
+    p.set_weapon(4)
+    assert p.weapon == 4
     # No-op on same weapon.
-    p.set_weapon(9)
-    assert p.weapon == 9
+    p.set_weapon(4)
+    assert p.weapon == 4
 
 
 def test_player_set_weapon_ignores_out_of_range():
@@ -64,9 +65,10 @@ def test_player_set_weapon_ignores_out_of_range():
 def test_player_bullet_speed_uses_weapon():
     """spawn_bullet reads WEAPON_BULLET_SPEED[self.weapon], so a
     freshly-constructed Player should emit bullets at the
-    weapon-0 muzzle velocity (480 px/s)."""
+    current weapon's muzzle velocity. Weapon 1 (white piercing) =
+    800 px/s."""
     p = Player(pygame.Rect(0, 0, 480, 270))
-    p.set_weapon(2)  # blue ion (700 px/s)
+    p.set_weapon(1)  # white piercing
     pool = []
     from stellar_horizon.entities.bullet import PlayerBullet
     for _ in range(2):
@@ -77,9 +79,9 @@ def test_player_bullet_speed_uses_weapon():
     p.update(1 / 120, {pygame.K_SPACE: True}, pool)
     alive = [b for b in pool if b.alive]
     assert len(alive) == 1
-    assert alive[0].vx == 700.0  # weapon 2 = blue ion
-    # Cooldown is set to weapon-2 value (0.07).
-    assert abs(p.shoot_cooldown - 0.07) < 1e-6
+    assert alive[0].vx == 800.0  # weapon 1 = white piercing
+    # Cooldown is set to weapon-1 value (0.09).
+    assert abs(p.shoot_cooldown - 0.09) < 1e-6
 
 
 def test_player_bullet_records_spawn_time_and_weapon():
@@ -87,7 +89,7 @@ def test_player_bullet_records_spawn_time_and_weapon():
     current scene time (so the code-driven VFX knows how old it is)
     and the weapon index (so the VFX picks the right animation)."""
     p = Player(pygame.Rect(0, 0, 480, 270))
-    p.set_weapon(7)  # pink heart
+    p.set_weapon(2)  # magenta heart
     pool = []
     from stellar_horizon.entities.bullet import PlayerBullet
     for _ in range(2):
@@ -99,7 +101,7 @@ def test_player_bullet_records_spawn_time_and_weapon():
     alive = [b for b in pool if b.alive]
     assert len(alive) == 1
     assert alive[0].spawn_time == 3.75
-    assert alive[0].weapon == 7
+    assert alive[0].weapon == 2
 
 
 def test_player_update_without_now_keeps_default_spawn_time():
@@ -107,6 +109,9 @@ def test_player_update_without_now_keeps_default_spawn_time():
     work (spawn_time defaults to 0.0, which makes the VFX phase
     predictable instead of crashing)."""
     p = Player(pygame.Rect(0, 0, 480, 270))
+    # 2026-09-08 v1.5 final: weapon 0 is the BEAM (no bullets).
+    # Use weapon 4 (rainbow streak) to verify the spawn path.
+    p.set_weapon(4)
     pool = []
     from stellar_horizon.entities.bullet import PlayerBullet
     for _ in range(2):
@@ -118,30 +123,35 @@ def test_player_update_without_now_keeps_default_spawn_time():
     alive = [b for b in pool if b.alive]
     assert len(alive) == 1
     assert alive[0].spawn_time == 0.0
-    assert alive[0].weapon == 0  # default weapon
+    assert alive[0].weapon == 4  # rainbow streak
 
 
 # --- GameplayScene weapon-key mapping ----------------------------------
 
-def test_weapon_keys_are_ten_and_distinct():
+def test_weapon_keys_are_five_and_distinct():
     from stellar_horizon.scenes.gameplay import GameplayScene
     keys = GameplayScene._WEAPON_KEYS
-    assert len(keys) == 10
-    assert len(set(keys)) == 10  # all distinct
-    # 1..9 + 0 in that order.
+    assert len(keys) == 5
+    assert len(set(keys)) == 5  # all distinct
+    # 1..5 in that order.
     expected = [pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4,
-               pygame.K_5, pygame.K_6, pygame.K_7, pygame.K_8,
-               pygame.K_9, pygame.K_0]
+               pygame.K_5]
     assert list(keys) == expected
 
 
 def test_weapon_names_match_keys():
     from stellar_horizon.scenes.gameplay import GameplayScene
     names = GameplayScene._WEAPON_NAMES
-    assert len(names) == 10
+    assert len(names) == 5
     # Each name is a non-empty string.
     for n in names:
         assert isinstance(n, str) and len(n) > 0
+    # 2026-09-08 v1.5 final: specific names in order.
+    assert names[0] == "ORANGE FIRE"
+    assert names[1] == "WHITE PIERCE"
+    assert names[2] == "PINK HEART"
+    assert names[3] == "CYAN ICE"
+    assert names[4] == "RAINBOW"
 
 
 def test_keydown_event_switches_weapon():
@@ -155,7 +165,7 @@ def test_keydown_event_switches_weapon():
                       Path("stellar_horizon/assets"))
     s.on_enter()
     assert s.player.weapon == 0
-    # Simulate pressing key '4' (index 3 = purple void).
+    # Simulate pressing key '4' (index 3 = cyan ice).
     events = [pygame.event.Event(pygame.KEYDOWN, {"key": pygame.K_4,
                                                   "mod": 0, "unicode": "4",
                                                   "scancode": 5,
@@ -217,7 +227,7 @@ def test_hud_draw_with_weapon_catalog_does_not_crash():
     the catalog is empty (all weapon_anim lookups return None and
     the code falls back to a small box)."""
     h = Hud()
-    h.set_weapon_catalog({}, ("A",) * 10, 0)
+    h.set_weapon_catalog({}, ("A",) * 5, 0)
     surf = pygame.Surface((480, 270))
     h.draw(surf)
     # The bottom bar should have been painted (some non-bg pixels

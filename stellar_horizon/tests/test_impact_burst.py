@@ -4,7 +4,7 @@ FxLayer.emit_impact_weapon).
 The collision handler in gameplay.py looks up the weapon's params
 and calls emit_impact_weapon() with the bullet's velocity. These
 tests verify:
-- The table covers all 10 weapons.
+- The table covers all 5 weapons.
 - get_params() returns the right params for each weapon and a
   safe fallback for out-of-range.
 - emit_impact_weapon() emits the expected number of particles
@@ -28,9 +28,9 @@ from stellar_horizon.fx.weapon_impact import (
 )
 
 
-def test_table_covers_all_10_weapons() -> None:
-    # 2026-09-08 v1.5: one entry per weapon, 0..9.
-    assert len(WEAPON_IMPACT_PARAMS) == 10
+def test_table_covers_all_5_weapons() -> None:
+    # 2026-09-08 v1.5 final: one entry per weapon, 0..4.
+    assert len(WEAPON_IMPACT_PARAMS) == 5
 
 
 def test_each_entry_has_required_fields() -> None:
@@ -45,7 +45,7 @@ def test_each_entry_has_required_fields() -> None:
 
 
 def test_get_params_returns_correct_entry() -> None:
-    for i in range(10):
+    for i in range(5):
         assert get_params(i) is WEAPON_IMPACT_PARAMS[i]
 
 
@@ -56,13 +56,13 @@ def test_get_params_falls_back_to_weapon_0_for_out_of_range() -> None:
 
 
 def test_per_weapon_palette_distinct() -> None:
-    # The 4 new charged-shot weapons (5, 6, 7, 8) should have
-    # distinct colors from each other (orange, white, magenta, cyan).
-    c5 = WEAPON_IMPACT_PARAMS[5].color
-    c6 = WEAPON_IMPACT_PARAMS[6].color
-    c7 = WEAPON_IMPACT_PARAMS[7].color
-    c8 = WEAPON_IMPACT_PARAMS[8].color
-    palettes = {c5, c6, c7, c8}
+    # The 4 charged weapons (0, 1, 2, 3) should have distinct colors
+    # from each other (orange, white, magenta, cyan).
+    c0 = WEAPON_IMPACT_PARAMS[0].color
+    c1 = WEAPON_IMPACT_PARAMS[1].color
+    c2 = WEAPON_IMPACT_PARAMS[2].color
+    c3 = WEAPON_IMPACT_PARAMS[3].color
+    palettes = {c0, c1, c2, c3}
     assert len(palettes) == 4, "the 4 charged weapons must have distinct colors"
 
 
@@ -82,7 +82,7 @@ def _make_fx() -> tuple:
 
 def test_emit_impact_weapon_emits_count_particles() -> None:
     fx, engine = _make_fx()
-    params = WEAPON_IMPACT_PARAMS[5]  # orange fire
+    params = WEAPON_IMPACT_PARAMS[0]  # orange fire
     fx.emit_impact_weapon(100.0, 100.0, vx_dir=200.0, vy_dir=0.0,
                           params=params)
     spark_emits = [c for c in engine.emit.call_args_list
@@ -93,7 +93,7 @@ def test_emit_impact_weapon_emits_count_particles() -> None:
 def test_emit_impact_weapon_adds_flash_when_enabled() -> None:
     from stellar_horizon.fx.particles import P_FLASH
     fx, engine = _make_fx()
-    params = WEAPON_IMPACT_PARAMS[6]  # Megaman charged, add_flash=True
+    params = WEAPON_IMPACT_PARAMS[1]  # Megaman charged, add_flash=True
     fx.emit_impact_weapon(0.0, 0.0, 100.0, 0.0, params)
     flash_emits = [c for c in engine.emit.call_args_list
                    if c.args[0] == P_FLASH]
@@ -115,7 +115,7 @@ def test_emit_impact_weapon_no_flash_when_disabled() -> None:
 
 def test_emit_impact_weapon_particles_concentrate_forward() -> None:
     fx, engine = _make_fx()
-    params = WEAPON_IMPACT_PARAMS[5]
+    params = WEAPON_IMPACT_PARAMS[0]
     # Use a high count + tight spread for statistical reliability.
     params = WeaponImpactParams(
         particle_kind=params.particle_kind, color=params.color,
@@ -142,7 +142,7 @@ def test_emit_impact_weapon_zero_velocity_falls_back_to_forward() -> None:
 
 def test_emit_impact_weapon_uses_params_color_and_life() -> None:
     fx, engine = _make_fx()
-    params = WEAPON_IMPACT_PARAMS[7]  # magenta heart
+    params = WEAPON_IMPACT_PARAMS[2]  # magenta heart
     fx.emit_impact_weapon(0.0, 0.0, 100.0, 0.0, params)
     for c in engine.emit.call_args_list:
         # emit(kind, x, y, vx, vy, color=..., life=...)
