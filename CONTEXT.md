@@ -6,22 +6,23 @@
 
 ## Estado del proyecto
 
-- **Version:** v1.7.0 (tagged 2026-09-09).
-- **Status:** Stable, live on GitHub Releases. ChargedDisc + re-implemented rings shipped.
-- **Test baseline:** 503 passed, 0 failed (was 311 in v1.1.0).
-- **Latest tag:** `v1.7.0` at commit `60feb18` (release notes).
+- **Version:** v1.7.1 (tagged 2026-09-09).
+- **Status:** Stable, live on GitHub Releases. ChargedDisc + re-implemented rings + ChargedDisc SFX shipped.
+- **Test baseline:** 510 passed, 0 failed (was 311 in v1.1.0).
+- **Latest tag:** `v1.7.1` at commit `1069f7d` (release notes).
   Gameplay work commits: `9e20833` (ChargedDisc) + `350c869`
-  (power-up rings re-implementation).
+  (power-up rings re-implementation) + `5abc32e` (synth pass
+  for ChargedDisc SFX, 4 events).
 
 ## Última sesión
 
-**2026-09-09 — v1.7.0: ChargedDisc (slot 1) + re-implemented power-up rings**
+**2026-09-09 — v1.7.1: ChargedDisc SFX + re-implemented rings + ChargedDisc**
 
-- **ChargedDisc** (entities/charged_disc.py + fx/charged_disc_renderer.py + fx/shockwave.py): 40px radius, 1100 px/s, max 4 hits, 8x first / 3x secondary, fades over 0.4s after the last hit. CHARGE_TIME_S[1] 1.2s → 1.0s. New FxLayer primitives: `emit_shockwave()`, `add_screen_shake()` (capped at 6px), `add_flash()`. 21 new tests. Visual: `sprite_tests/captures/charged_disc_v17.png`.
-- **PowerUp re-implementation** (entities/powerup.py): 18px ring + 22px glow, drop rates 5%/10% → 18%/25%, drop VFX, idle bobbing + glow pulse, magnet hint, drop physics (random kick + gravity + drag), pickup popups. New gameplay.py system: `_draw_popups()` / `_spawn_popup()` for floating "+1 LIFE" / "+1 MAX" text. Dedicated sfx events `ring_pickup_gold` / `ring_pickup_silver` (placeholder .wav). 11 new tests. Visual: `sprite_tests/captures/powerup_rings_v17.png`.
-- **Released at:** https://github.com/lerius700-cmyk/Stellar-Horizon/releases/tag/v1.7.0
-- **Download:** `StellarHorizon-v1.7.0-win64.zip` (34.6 MB)
-- **6 sfx events pending** synth pass: 4 ChargedDisc + 2 ring pickups. Events dispatch as silent no-op until the .wav files are generated.
+- **v1.7.1 release (commit 1069f7d)**: ChargedDisc SFX (4 events) now backed by real `.wav` files via the synth module. v1.7.0 was technically incomplete (audio was silent). Released at https://github.com/lerius700-cmyk/Stellar-Horizon/releases/tag/v1.7.1. Download: `StellarHorizon-v1.7.1-win64.zip` (34.6 MB).
+- **v1.7.0 release (commit 60feb18)**: ChargedDisc + re-implemented rings. ChargedDisc: 40px radius, 1100 px/s, max 4 hits, 8x first / 3x secondary, fades over 0.4s. CHARGE_TIME_S[1] 1.2s → 1.0s. New FxLayer primitives (`emit_shockwave`, `add_screen_shake` capped at 6px, `add_flash`). PowerUp re-implementation: 18px ring + 22px glow, drop rates 5%/10% → 18%/25%, drop VFX, idle bobbing + glow pulse, magnet hint, drop physics, floating "+1 LIFE" / "+1 MAX" popups.
+- **Synth pass (commit 5abc32e)**: 4 new `_SfxSpec` entries in `synth.py` (charge_hum_white, charged_release, charged_hit, charged_hit_secondary) + 7 new tests. Triangle wave (no pure sine available in synth).
+- **Tests:** 510 passing (was 487 in v1.6.0, +23 across v1.7.0/v1.7.1 work).
+- **2 ring pickup sfx still pending** synth pass: `ring_pickup_gold`, `ring_pickup_silver`.
 - **Token rotation done:** `STELLAR_HORIZON_TOKEN` was leaked via `$env:VAR` (PowerShell prints bare variable expressions). User regenerated via `setx HKCU\Environment`. New safe pattern: `$env:STELLAR_HORIZON_TOKEN = $null` before running `tools/create_v1_6_0_release.py` so the script falls back to the registry-stored token.
 - **DEPRECATED on disk:** `fx/ship_charge_aura.py` (v1.5 charge aura) — kept per memory rule 2026-09-07 (no borrar sin pedir).
 
