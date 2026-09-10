@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# Captured evidence (regenerate with capture_evidence.py)
+# Keep them tracked so the README can link to them.
+# evidence_*.png
+
+# IDE
+.vscode/
+.idea/
+*.swp
