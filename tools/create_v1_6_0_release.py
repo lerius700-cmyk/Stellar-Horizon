@@ -17,9 +17,9 @@ from pathlib import Path
 
 GITHUB_API = "https://api.github.com"
 REPO = "lerius700-cmyk/Stellar-Horizon"
-TAG = "v1.6.0"
-ZIP_PATH = Path("StellarHorizon-v1.6.0-win64.zip")
-NOTES_PATH = Path("RELEASE_NOTES_v1.6.0.md")
+TAG = "v1.7.2"
+ZIP_PATH = Path("StellarHorizon-v1.7.2-win64.zip")
+NOTES_PATH = Path("RELEASE_NOTES_v1.7.2.md")
 
 
 def _check_status(resp: urllib.request.addinfourl) -> dict:
@@ -96,7 +96,7 @@ def main() -> int:
     # 1. Create the release.
     body = json.dumps({
         "tag_name": TAG,
-        "name": "Stellar Horizon v1.6.0 -- B + SPACE",
+        "name": "Stellar Horizon v1.7.2 -- Ring Pickup SFX",
         "body": notes,
         "draft": False,
         "prerelease": False,
